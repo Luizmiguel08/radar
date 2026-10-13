@@ -1,7 +1,7 @@
 {
  "name": "Radar de Comissões · Fortal",
  "short_name": "Radar",
- "id": "./",
+ "id": "/radar/",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
