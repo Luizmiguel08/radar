@@ -617,7 +617,7 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=d56c959ee9"></script>
+<script src="radar-app.js?v=53a58429d4"></script>
 <script>
 (function(){
 'use strict';
@@ -1529,16 +1529,16 @@ function parseLinhaPlanilha(txt){
   if(!r.cliente || !r.valorImovel) return null;
   return r;
 }
-function openForm(existing){ if(readOnly){ toast('Somente leitura'); return; }
-  const s = existing ? {...existing} : {id:uid(),cliente:'',corretor:cfg.corretores[0]?cfg.corretores[0].nome:'',construtora:cfg.construtoras[0]?cfg.construtoras[0].nome:'',valorImovel:'',pct:cfg.construtoras[0]?cfg.construtoras[0].pct:5,entrada:'',dataEntrada:today,dataVenda:today,parcela:'',dataPrimeiraParcela:'',recebimentos:{}};
+function openForm(existing, opts){ opts=opts||{}; if(readOnly){ toast('Somente leitura'); return; }
+  const s = existing ? {...existing} : {id:uid(),cliente:'',corretor:cfg.corretores[0]?cfg.corretores[0].nome:'',construtora:cfg.construtoras[0]?cfg.construtoras[0].nome:'',valorImovel:'',pct:cfg.construtoras[0]?cfg.construtoras[0].pct:5,entrada:'',dataEntrada:today,dataVenda:today,parcela:'',dataPrimeiraParcela:'',recebimentos:{},...(opts.dados||{})};
   const root=document.getElementById('modalRoot');
   root.innerHTML=`<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <h2 id="mTitle">${existing?'Editar venda':'Nova venda'}</h2>
+    <h2 id="mTitle">${opts.titulo?esc(opts.titulo):existing?'Editar venda':'Nova venda'}</h2>${opts.nota||''}
     <p class="hint">Informe os dados do contrato. O cronograma de comissão (entrada + parcelas) é calculado na hora.</p>
-    ${existing?'':`<div class="full" style="margin-bottom:12px"><label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:var(--ink-2)">Colar linha da planilha (opcional)<textarea id="f_paste" rows="2" placeholder="Copie a linha inteira do Google Sheets (da coluna Data até Empresa) e cole aqui — os campos abaixo são preenchidos automaticamente" style="border:1px dashed var(--line-strong);border-radius:9px;padding:9px 11px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;resize:vertical"></textarea></label><div id="f_pasteMsg" class="sub" style="margin-top:4px"></div></div>`}
+    ${existing||opts.dados?'':`<div class="full" style="margin-bottom:12px"><label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:var(--ink-2)">Colar linha da planilha (opcional)<textarea id="f_paste" rows="2" placeholder="Copie a linha inteira do Google Sheets (da coluna Data até Empresa) e cole aqui — os campos abaixo são preenchidos automaticamente" style="border:1px dashed var(--line-strong);border-radius:9px;padding:9px 11px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;resize:vertical"></textarea></label><div id="f_pasteMsg" class="sub" style="margin-top:4px"></div></div>`}
     <form class="form" id="saleForm">
       <label class="full">Cliente<input id="f_cliente" required value="${esc(s.cliente)}" placeholder="Nome completo"></label>
-      <label>Corretor<select id="f_corretor">${cfg.corretores.map(c=>`<option ${c.nome===s.corretor?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label>
+      <label>Corretor<select id="f_corretor">${opts.dados&&!cfg.corretores.some(c=>c.nome===s.corretor)?'<option value="" selected>Escolha o corretor</option>':''}${cfg.corretores.map(c=>`<option ${c.nome===s.corretor?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label>
       <label>Construtora / empreendimento<input id="f_construtora" list="dl_construtoras" value="${esc(s.construtora||'')}" placeholder="Ex.: Raj Mendes"><datalist id="dl_construtoras">${cfg.construtoras.map(c=>`<option value="${esc(c.nome)}">${c.pct}%</option>`).join('')}</datalist></label>
       <label>Valor do imóvel (R$)<input id="f_valor" type="number" min="0" step="1000" value="${s.valorImovel}"></label>
       <label>Comissão (%)<input id="f_pct" type="number" min="0" step="0.5" required value="${s.pct}"></label>
@@ -1596,13 +1596,13 @@ function openForm(existing){ if(readOnly){ toast('Somente leitura'); return; }
   g('modalBg').addEventListener('click',e=>{ if(e.target.id==='modalBg') close(); });
   const showErr=m=>{ let e=g('mErr'); if(!e){ e=document.createElement('div'); e.id='mErr'; e.style.cssText='background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;margin-top:10px'; g('mSave').parentElement.insertAdjacentElement('beforebegin',e); } e.textContent=m; e.scrollIntoView({block:'nearest'}); };
   let dupOk=false;
-  g('mSave').addEventListener('click',async()=>{ const v=read(); if(!v.cliente||(!v.valorImovel&&v.comissaoManual==null)){ showErr('Preencha o nome do cliente e o valor do imóvel (ou a comissão negociada).'); return; }
+  g('mSave').addEventListener('click',async()=>{ const v=read(); if(opts.dados&&!v.corretor){ showErr('Escolha o corretor que leva a comissão.'); g('f_corretor').focus(); return; } if(opts.dados&&!v.pct&&v.comissaoManual==null){ showErr('Informe a comissão (%) da construtora.'); g('f_pct').focus(); return; } if(!v.cliente||(!v.valorImovel&&v.comissaoManual==null)){ showErr('Preencha o nome do cliente e o valor do imóvel (ou a comissão negociada).'); return; }
     if(!existing && !dupOk){ const nz=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); const dup=sales.find(x=>nz(x.cliente)===nz(v.cliente) && (nz(x.unidade)===nz(v.unidade) || nz(x.construtora)===nz(v.construtora))); if(dup){ showErr(`Já existe uma venda de ${dup.cliente} · ${dup.construtora} un. ${dup.unidade||'-'} · ${fmt(dup.valorImovel||0)} (venda ${fmtDs(dup.dataVenda||dup.dataEntrada)}). Se for a mesma venda, cancele e edite a existente; se for outra unidade, clique em "Cadastrar venda" de novo para confirmar.`); dupOk=true; return; } }
     const scv=schedule(v); if(!scv.distrato && scv.semParcela){ showErr(`Faltam ${fmt2(scv.restante)} de comissão sem cronograma: informe a parcela mensal do cliente ou marque "comissão integral" (quando a entrada/pagamento quita a comissão inteira).`); g('f_parcela').focus(); g('f_parcela').style.borderColor='var(--crit)'; return; }
     delete v.exemplo; if(!cfg.construtoras.some(c=>c.nome.toLowerCase()===v.construtora.toLowerCase())&&v.construtora){ cfg.construtoras.push({nome:v.construtora,pct:v.pct,repasse:'sexta'}); persistCfg(`cadastrou a construtora ${v.construtora} (${v.pct}%)`); }
     let acao;
-    if(existing){ const ch=diffFields(existing,v); if(existing.statusContrato!=='distrato'&&v.statusContrato==='distrato') acao='marcou distrato'; else if(existing.statusContrato==='distrato'&&v.statusContrato!=='distrato') acao='reativou o contrato'; else acao=ch.length?('editou: '+ch.join(', ')):'salvou sem alterações'; } else acao='cadastrou a venda';
-    g('mSave').disabled=true; g('mSave').textContent='Salvando…'; const ok=await persistSale(v, acao); if(ok){ close(); } else { g('mSave').disabled=false; g('mSave').textContent=existing?'Salvar alterações':'Cadastrar venda'; showErr('Não foi possível salvar: '+(lastSaveError||'sem conexão com o banco')+'. Tente de novo; se continuar, me avise.'); } });
+    if(existing){ const ch=diffFields(existing,v); if(existing.statusContrato!=='distrato'&&v.statusContrato==='distrato') acao='marcou distrato'; else if(existing.statusContrato==='distrato'&&v.statusContrato!=='distrato') acao='reativou o contrato'; else acao=ch.length?('editou: '+ch.join(', ')):'salvou sem alterações'; } else acao=opts.acao||'cadastrou a venda';
+    g('mSave').disabled=true; g('mSave').textContent='Salvando…'; const ok=await persistSale(v, acao); if(ok){ close(); if(opts.aoSalvar){ try{ opts.aoSalvar(v); }catch(e){ console.error(e); } } } else { g('mSave').disabled=false; g('mSave').textContent=existing?'Salvar alterações':'Cadastrar venda'; showErr('Não foi possível salvar: '+(lastSaveError||'sem conexão com o banco')+'. Tente de novo; se continuar, me avise.'); } });
   if(existing) g('mDelete').addEventListener('click',()=>{ close(); askConfirm(`Excluir a venda de ${esc(s.cliente)}?`,'Ela vai para a lixeira por 30 dias e pode ser restaurada.',{okLabel:'Excluir',danger:true}).then(ok=>{ if(ok) removeSale(s.id); else openForm(existing); }); });
   setTimeout(()=>g('f_cliente').focus(),50);
 }
@@ -1880,6 +1880,7 @@ function render(){
 let toastT; function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
 
 document.getElementById('btnNew').addEventListener('click',()=>openForm(null));
+window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today};
 ['fSearch','fBroker','fBuilder','fStatus'].forEach(id=>document.getElementById(id).addEventListener('input',renderSales));
 document.querySelectorAll('#instChips .chip').forEach(c=>c.addEventListener('click',()=>{ instFilter=c.dataset.f; renderInstallments(); }));
 ['iSearch','iBroker','iBuilder','iType','iFrom','iTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderInstallments));
