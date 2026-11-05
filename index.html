@@ -261,8 +261,12 @@ td.prog .sub{white-space:nowrap}
 }
 @media (max-width:480px){.kpis{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-body.ro #btnNew,body.ro [data-edit],body.ro [data-del],body.ro [data-setdate],body.ro [data-pay],body.ro [data-unpay],body.ro [data-rep-do],body.ro [data-unrep],body.ro [data-entrada],body.ro [data-cpay],body.ro [data-adiar],body.ro [data-cobrado],body.ro [data-repall],body.ro #fwRepAll,body.ro #cfgAddBroker,body.ro #cfgAddBuilder,body.ro #sec-config,body.ro #banner{display:none!important}
+body.ro #btnNew,body.ro [data-edit],body.ro [data-del],body.ro [data-setdate],body.ro [data-pay],body.ro [data-unpay],body.ro [data-rep-do],body.ro [data-unrep],body.ro [data-entrada],body.ro [data-cpay],body.ro [data-adiar],body.ro [data-cobrado],body.ro [data-ent-pago],body.ro [data-ent-contato],body.ro [data-ent-data],body.ro [data-ent-distrato],body.ro [data-ent-aberto],body.ro [data-ent-fix],body.ro [data-repall],body.ro #fwRepAll,body.ro #cfgAddBroker,body.ro #cfgAddBuilder,body.ro #sec-config,body.ro #banner{display:none!important}
 body.ro .ro-note{display:flex}
+.ent-prazo{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.ent-prazo input{width:58px;padding:6px 8px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;text-align:center}
+.ent-ultimo{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.cobgrp .gh .tag{font-size:11px}
 .ro-note{display:none;align-items:center;gap:10px;background:#eef4ff;border:1px solid #c7d7f5;color:#1e3a8a;border-radius:10px;padding:8px 14px;font-size:13px;margin:0 0 12px;font-weight:600}
 .who{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:600}
 .who img{width:22px;height:22px;border-radius:50%}
@@ -527,6 +531,23 @@ body.broker .broker-bar{display:flex}
       </div>
     </section>
 
+    <!-- ENTRADAS -->
+    <section class="section" id="sec-entradas">
+      <div class="kpis" id="kpisEnt"></div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div><h2>Régua da entrada</h2><p id="entRegra"></p></div><label class="ent-prazo" title="Dias depois da venda para a entrada cair">Prazo <input id="entPrazo" type="number" min="1" max="60" step="1" inputmode="numeric"> dias</label></div>
+        <div id="entLista"></div>
+      </div>
+      <div class="card" style="margin-bottom:14px" id="cardEntConfirmar">
+        <div class="card-head"><div><h2>Marcadas como pagas, sem confirmação</h2><p>A venda entrou com a entrada paga, mas ninguém confirmou e a comissão da entrada ainda não caiu.</p></div></div>
+        <div id="entConfirmar"></div>
+      </div>
+      <div class="card" id="cardEntConflito">
+        <div class="card-head"><div><h2>Conferir</h2><p>A comissão da entrada já caiu, mas a venda continua com a entrada em aberto.</p></div></div>
+        <div id="entConflito"></div>
+      </div>
+    </section>
+
     <!-- FECHAMENTO -->
     <section class="section" id="sec-fechamento">
       <div class="card" style="margin-bottom:14px">
@@ -617,7 +638,7 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=53a58429d4"></script>
+<script src="radar-app.js?v=d4df2fbc0b"></script>
 <script>
 (function(){
 'use strict';
@@ -914,7 +935,7 @@ async function boot(){
       render();
     }, err=>{ setFoot('Sem sincronização', err.message||err.code); });
     db.doc('config/geral').onSnapshot(snap=>{
-      if(snap.exists){ const c=JSON.parse(JSON.stringify(snap.data())); cfg={corretores:c.corretores||JSON.parse(JSON.stringify(DEFAULT_CFG.corretores)), construtoras:c.construtoras||JSON.parse(JSON.stringify(DEFAULT_CFG.construtoras))}; }
+      if(snap.exists){ const c=JSON.parse(JSON.stringify(snap.data())); cfg={corretores:c.corretores||JSON.parse(JSON.stringify(DEFAULT_CFG.corretores)), construtoras:c.construtoras||JSON.parse(JSON.stringify(DEFAULT_CFG.construtoras))}; if(c.prazoEntrada!=null) cfg.prazoEntrada=c.prazoEntrada; }
             render();
     });
   } else {
@@ -934,6 +955,7 @@ const NAV = [
   {id:'sales',label:'Vendas',sub:'Cadastro e acompanhamento de cada venda',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>'},
   {id:'installments',label:'Recebimentos',sub:'Entradas e parcelas de comissão, com datas de repasse',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'},
   {id:'cobrancas',label:'Cobranças',sub:'Clientes com parcela vencida e construtoras devendo · mensagens prontas',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6.2 6.2l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>'},
+  {id:'entradas',label:'Entradas',sub:'Vendas assinadas sem entrada confirmada · régua de cobrança',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>'},
   {id:'fechamento',label:'Fechamento',sub:'Fechamento da semana: o que caiu, o que não caiu e repasses a pagar',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'},
   {id:'brokers',label:'Corretores',sub:'Desempenho e crescimento individual',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/></svg>'},
   {id:'repasses',label:'Repasses',sub:'O que cada corretor tem a receber e o que já foi pago',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8l4 4-4 4M21 12H9"/><path d="M7 8l-4 4 4 4M3 12h6"/></svg>'},
@@ -954,17 +976,18 @@ function renderNav(){
   const alerts = buildAlerts();
   const n = alerts.filter(a=>a.level==='crit'||a.level==='warn').length;
     const nc = allInstallments().filter(p=>p.status==='cliente'||p.status==='atrasado').length;
-  const BROKER_NAV=['brokers','cobrancas']; const BL={brokers:'Meu extrato',cobrancas:'Meus clientes'};
+  const ne = entradasPendentes().acao;
+  const BROKER_NAV=['brokers','cobrancas','entradas']; const BL={brokers:'Meu extrato',cobrancas:'Meus clientes',entradas:'Minhas entradas'};
   const navList = brokerMode ? BROKER_NAV.map(id=>({...NAV.find(x=>x.id===id), label:BL[id]})) : NAV.filter(x=>!(readOnly&&x.id==='config'));
-  document.getElementById('nav').innerHTML = navList.map(x=>`<button data-v="${x.id}" class="${view===x.id?'active':''}">${x.icon}${x.label}${x.id==='alerts'&&n?`<span class="badge">${n}</span>`:''}${x.id==='cobrancas'&&nc?`<span class="badge">${nc}</span>`:''}</button>`).join('');
-  const MOBILE_MAIN=brokerMode?['brokers','cobrancas']:['overview','sales','installments','brokers']; const MOBILE_LABEL=brokerMode?{brokers:'Meu extrato',cobrancas:'Meus clientes'}:{overview:'Início',sales:'Vendas',installments:'Receber',brokers:'Corretores'};
+  document.getElementById('nav').innerHTML = navList.map(x=>`<button data-v="${x.id}" class="${view===x.id?'active':''}">${x.icon}${x.label}${x.id==='alerts'&&n?`<span class="badge">${n}</span>`:''}${x.id==='cobrancas'&&nc?`<span class="badge">${nc}</span>`:''}${x.id==='entradas'&&ne?`<span class="badge">${ne}</span>`:''}</button>`).join('');
+  const MOBILE_MAIN=brokerMode?['brokers','cobrancas','entradas']:['overview','sales','installments','brokers']; const MOBILE_LABEL=brokerMode?{brokers:'Meu extrato',cobrancas:'Meus clientes',entradas:'Entradas'}:{overview:'Início',sales:'Vendas',installments:'Receber',brokers:'Corretores'};
   const moreActive = !MOBILE_MAIN.includes(view);
   document.getElementById('mobileNav').innerHTML = NAV.filter(x=>MOBILE_MAIN.includes(x.id)).map(x=>`<button data-v="${x.id}" class="${view===x.id?'active':''}">${x.icon}${MOBILE_LABEL[x.id]||x.label}</button>`).join('')
     + (brokerMode?'':`<button id="mobileMore" class="${moreActive?'active':''}" style="position:relative"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>Mais${n?`<span class="badge" style="position:absolute;top:2px;right:10px">${n}</span>`:''}</button>`);
   const mm=document.getElementById('mobileMore'); if(mm) mm.addEventListener('click',()=>openMore(n));
   document.querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>{ view=b.dataset.v; render(); window.scrollTo({top:0}); }));
   const cur = NAV.find(x=>x.id===view);
-  document.getElementById('pageTitle').textContent=(brokerMode&&view==='brokers')?'Meu extrato':(brokerMode&&view==='cobrancas')?'Meus clientes':cur.label;
+  document.getElementById('pageTitle').textContent=(brokerMode&&view==='brokers')?'Meu extrato':(brokerMode&&view==='cobrancas')?'Meus clientes':(brokerMode&&view==='entradas')?'Minhas entradas':cur.label;
   document.getElementById('pageSub').textContent=cur.sub;
   document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active', s.id==='sec-'+view));
 }
@@ -1316,8 +1339,11 @@ function buildAlerts(){
   late.sort((a,b)=>a.dataRecebimento.localeCompare(b.dataRecebimento)).forEach(p=>out.push({level:'crit',icon:ICONS.alert,title:`${fmt(p.comissao)} atrasado · ${p.venda.cliente}`,text:`${p.tipo} deveria ter caído em ${fmtD(p.dataRecebimento)} (${p.clientePagou?'cliente pagou em '+fmtD(p.dataClientePagou||p.dataCliente):'parcela do cliente prevista para '+fmtD(p.dataCliente)}). Confirme com a ${p.venda.construtora} ou dê baixa em Recebimentos.`,action:{v:'installments',f:'atrasado'}}));
   const week=inst.filter(p=>p.status==='semana');
   if(week.length){ const v=week.reduce((a,p)=>a+p.comissao,0); out.push({level:'info',icon:ICONS.cal,title:`${fmt(v)} previstos para esta sexta`,text:`${week.length} lançamento${week.length===1?'':'s'}: ${week.slice(0,4).map(p=>p.venda.cliente.split(' ')[0]+' ('+p.tipo.toLowerCase()+')').join(', ')}${week.length>4?'…':''}.`,action:{v:'installments',f:'semana'}}); }
-  const ag = sales.filter(s=>isActive(s)&&s.entradaPaga===false&&!((s.recebimentos||{})[0]&&s.recebimentos[0].pago));
-  if(ag.length) out.push({level:'warn',icon:ICONS.clock,title:`${ag.length} venda${ag.length>1?'s':''} aguardando a entrada do cliente`,text:`${fmt(ag.reduce((a,s)=>a+schedule(s).list[0].comissao,0))} de comissão só entram no cronograma quando o cliente pagar: ${ag.slice(0,5).map(s=>s.cliente.split(' ')[0]).join(', ')}${ag.length>5?'…':''}. Ao receber, edite a venda e marque "Entrada paga".`,action:{v:'installments',f:'aguardando'}});
+  const pe = entradasPendentes();
+  if(pe.decidir.length) out.push({level:'crit',icon:ICONS.alert,title:`${pe.decidir.length} entrada${pe.decidir.length>1?'s':''} para decidir hoje`,text:`${fmt(pe.decidir.reduce((a,x)=>a+x.sc.total,0))} de comissão em vendas com a entrada vencida há 5 dias ou mais: ${pe.decidir.slice(0,5).map(x=>x.s.cliente.split(' ')[0]).join(', ')}${pe.decidir.length>5?'…':''}. Nova data com ok de sócio, troca de unidade ou distrato.`,action:{v:'entradas'}});
+  const ag = pe.aguardando.filter(x=>x.passo!=='decidir').map(x=>x.s);
+  if(ag.length) out.push({level:'warn',icon:ICONS.clock,title:`${ag.length} venda${ag.length>1?'s':''} aguardando a entrada do cliente`,text:`${fmt(ag.reduce((a,s)=>a+schedule(s).list[0].comissao,0))} de comissão só entram no cronograma quando o cliente pagar: ${ag.slice(0,5).map(s=>s.cliente.split(' ')[0]).join(', ')}${ag.length>5?'…':''}. O passo de cada uma está em Entradas.`,action:{v:'entradas'}});
+  if(pe.confirmar.length) out.push({level:'warn',icon:ICONS.info,title:`${pe.confirmar.length} entrada${pe.confirmar.length>1?'s':''} marcada${pe.confirmar.length>1?'s':''} como paga${pe.confirmar.length>1?'s':''} sem confirmação`,text:`${pe.confirmar.slice(0,5).map(x=>x.s.cliente.split(' ')[0]).join(', ')}${pe.confirmar.length>5?'…':''}: confira no extrato ou com o cliente e confirme em Entradas.`,action:{v:'entradas'}});
   const und = sales.filter(s=>isActive(s)&&!s.dataEntrada);
   if(und.length) out.push({level:'warn',icon:ICONS.cal,title:`${und.length} venda${und.length>1?'s':''} sem data de entrada`,text:'Elas contam no acumulado, mas não entram nos gráficos mensais nem nos totais do período. Edite cada venda para informar a data.',action:{v:'sales',f:'semdata'}});
   sales.forEach(s=>{ const sc=schedule(s); if(sc.semParcela) out.push({level:'warn',icon:ICONS.info,title:`Parcela não informada · ${s.cliente}`,text:`Faltam ${fmt(sc.restante)} de comissão e a venda não tem valor de parcela mensal. Edite a venda para gerar o cronograma.`,action:{v:'sales'}}); });
@@ -1434,6 +1460,113 @@ async function confirmEntrada(saleId, data){ if(readOnly){ toast('Somente leitur
   const patch = {entradaPaga:true, dataEntrada:d, statusEntrada:'Pago', historico:hist};
   if(db){ try{ await db.collection('vendas').doc(saleId).update(patch); toast('Entrada confirmada'); }catch(e){ toast('Não foi possível atualizar'); } }
   else { const i=sales.findIndex(x=>x.id===saleId); sales[i]={...s,...patch}; saveLocal(); render(); toast('Entrada confirmada'); }
+}
+
+/* ---------- Entradas: status único da entrada e régua de cobrança ----------
+   Estados de uma venda ativa: aguardando (entrada em aberto, segue a régua), confirmar (entrou como paga, mas
+   ninguém confirmou e a comissão da entrada não caiu), conflito (comissão da entrada recebida com a entrada em
+   aberto) e paga. Confirmada = comissão da entrada recebida ou status "Pago" gravado pelo botão Entrada paga.
+   A régua conta a partir do vencimento da entrada (data combinada na venda ou depois); sem data, vence no prazo. */
+const prazoEntrada = () => { const n=Math.round(Number(cfg.prazoEntrada)); return n>=1&&n<=60 ? n : 7; };
+const PASSOS_ENTRADA = {
+  decidir:{ordem:0,nivel:'crit',titulo:'Decidir hoje',dica:'Venceu há 5 dias ou mais: nova data com ok de sócio, troca de unidade ou distrato'},
+  socio:{ordem:1,nivel:'crit',titulo:'Sócio entra na conversa',dica:'Venceu há 3 ou 4 dias: um sócio fala com o cliente junto com o corretor'},
+  ligar:{ordem:2,nivel:'warn',titulo:'Ligar para o cliente',dica:'Venceu há 1 ou 2 dias: boleto pode levar um dia para compensar, então liga e confere'},
+  lembrar:{ordem:3,nivel:'warn',titulo:'Lembrar o cliente',dica:'Vence hoje ou amanhã'},
+  dados:{ordem:4,nivel:'info',titulo:'Mandar os dados de pagamento',dica:'Venda nova: conferir se o boleto ou o Pix da construtora chegou'},
+  agendada:{ordem:5,nivel:'neutral',titulo:'No prazo',dica:'Ainda não venceu; o próximo passo é na véspera'}
+};
+const diasEntre = (a,b) => Math.round((parseD(b)-parseD(a))/864e5);
+const quemSou = () => { const q=operador(); return q&&q!=='—' ? q : ''; };
+const comissaoEntradaRecebida = s => { const r=(s.recebimentos||{})[0]; return r&&r.pago ? r : null; };
+function reguaEntrada(s){
+  const P=prazoEntrada(); const base=s.dataVenda||s.dataEntrada||today;
+  const comb=s.entradaCombinada&&s.entradaCombinada.data;
+  const venc=comb||s.dataEntrada||addDays(base,P);
+  const dias=Math.max(0,diasEntre(base,today)); const falta=diasEntre(today,venc);
+  const acima=!comb && !!s.dataEntrada && diasEntre(base,s.dataEntrada)>P;
+  let passo, txt;
+  if(falta>1){ passo = dias<=1 ? 'dados' : 'agendada'; txt=`Vence ${fmtD(venc)}, em ${falta} dias`; }
+  else if(falta>=0){ passo = dias<=1 ? 'dados' : 'lembrar'; txt = falta===1 ? `Vence amanhã (${fmtD(venc)})` : `Vence hoje (${fmtD(venc)})`; }
+  else { const atraso=-falta; passo = atraso<=2 ? 'ligar' : atraso<=4 ? 'socio' : 'decidir'; txt=`Venceu em ${fmtD(venc)}, há ${atraso} dia${atraso>1?'s':''}`; }
+  if(comb) txt+=` · data combinada${s.entradaCombinada.quem?' por '+s.entradaCombinada.quem:''}`;
+  else if(acima) txt+=` · marcada para ${diasEntre(base,s.dataEntrada)} dias depois da venda, acima do prazo de ${P}`;
+  return {passo, dias, venc, txt, atrasada: falta<0, acima};
+}
+function entradaInfo(s){
+  if(!isActive(s)) return {estado:'distrato'};
+  const sc=schedule(s); const rec=comissaoEntradaRecebida(s);
+  if(s.entradaPaga===false) return rec ? {estado:'conflito',sc,rec} : {estado:'aguardando',sc,...reguaEntrada(s)};
+  const confirmada = !!rec || /^\s*pago\s*$/i.test(String(s.statusEntrada||''));
+  const temEntrada = Number(s.entrada)>0 && !(sc.list[0]&&sc.list[0].semEntrada);
+  return (confirmada||!temEntrada) ? {estado:'paga',sc} : {estado:'confirmar',sc};
+}
+function entradasPendentes(){
+  const aguardando=[], confirmar=[], conflito=[];
+  sales.forEach(s=>{ const e=entradaInfo(s); if(e.estado==='aguardando') aguardando.push({s,...e}); else if(e.estado==='confirmar') confirmar.push({s,...e}); else if(e.estado==='conflito') conflito.push({s,...e}); });
+  const decidir=aguardando.filter(x=>x.passo==='decidir'); const atrasadas=aguardando.filter(x=>x.atrasada);
+  return {aguardando, confirmar, conflito, decidir, atrasadas, acao: decidir.length+confirmar.length+conflito.length};
+}
+function msgEntrada(s, passo){
+  const nome=(s.cliente||'').split(' ')[0]; const emp=s.empreendimento||s.construtora||''; const un=s.unidade||'-';
+  const val=Number(s.entrada)>0?' de '+fmt2(Number(s.entrada)):''; const r=reguaEntrada(s); const venc=fmtD(r.venc);
+  if(passo==='socio'){ const eu=quemSou(); return `Olá ${nome}, tudo bem? Aqui é ${eu||'[seu nome]'}, sócio da Fortal, junto com o ${s.corretor}. Vi que a entrada${val} da sua unidade no ${emp}, que venceu em ${venc}, ainda está em aberto. Aconteceu alguma coisa? Quero entender como a gente pode ajudar. Podemos falar hoje?`; }
+  if(passo==='ligar') return `Olá ${nome}, tudo bem? Aqui é ${s.corretor}, da Fortal. Ainda não consta o pagamento da entrada${val} da unidade ${un} no ${emp}, que venceu em ${venc}. Posso te ligar rapidinho hoje para ver se está tudo certo com o boleto?`;
+  if(passo==='lembrar') return `Olá ${nome}, tudo bem? Aqui é ${s.corretor}, da Fortal. Só lembrando que a entrada${val} da unidade ${un} no ${emp} vence ${diasEntre(today,r.venc)===1?'amanhã':'hoje'} (${venc}). Qualquer coisa com o boleto, me chama.`;
+  return `Olá ${nome}, tudo bem? Aqui é ${s.corretor}, da Fortal. A ${s.construtora||'construtora'} já te mandou o boleto ou o Pix da entrada${val} da unidade ${un} no ${emp}? O vencimento é ${venc}. Se ainda não chegou ou ficou alguma dúvida, me fala que eu resolvo com eles hoje.`;
+}
+async function atualizarVenda(id, patch, ok, erro){
+  const s=sales.find(x=>x.id===id); if(!s) return;
+  if(db){ try{ await db.collection('vendas').doc(id).update(patch); toast(ok); }catch(e){ toast(erro||'Não foi possível atualizar'); } }
+  else { const i=sales.findIndex(x=>x.id===id); sales[i]={...s,...patch}; saveLocal(); render(); toast(ok); }
+}
+async function registrarContatoEntrada(id, passo){ if(readOnly){ toast('Somente leitura'); return; }
+  const s=sales.find(x=>x.id===id); if(!s) return;
+  const lista=[...(Array.isArray(s.entradaContatos)?s.entradaContatos:[]), {data:today, quem:quemSou(), passo}];
+  await atualizarVenda(id, {entradaContatos:lista, historico:logHist(s, `registrou contato sobre a entrada (${(PASSOS_ENTRADA[passo]||{}).titulo||passo})`)}, 'Contato registrado', 'Não foi possível registrar');
+}
+async function combinarEntrada(id, d){ if(readOnly){ toast('Somente leitura'); return; }
+  const s=sales.find(x=>x.id===id); if(!s) return;
+  await atualizarVenda(id, {entradaCombinada:{data:d, quem:quemSou(), em:nowLocal()}, dataEntrada:d, historico:logHist(s, `combinou com o cliente a entrada para ${fmtD(d)}`)}, 'Nova data registrada');
+}
+async function entradaEmAberto(id){ if(readOnly){ toast('Somente leitura'); return; }
+  const s=sales.find(x=>x.id===id); if(!s) return;
+  await atualizarVenda(id, {entradaPaga:false, statusEntrada:'Em aberto', historico:logHist(s, 'marcou a entrada como ainda não paga')}, 'A venda entrou na régua da entrada');
+}
+function renderEntradas(){
+  const P=prazoEntrada(); const pend=entradasPendentes();
+  const parte=v=>{ const i=v.lastIndexOf(':'); return [v.slice(0,i), v.slice(i+1)]; };
+  const valor=x=>brokerMode ? x.sc.list.reduce((a,p)=>a+p.corretor,0) : x.sc.total;
+  const soma=arr=>arr.reduce((a,x)=>a+valor(x),0);
+  const inp=document.getElementById('entPrazo');
+  if(inp){ if(document.activeElement!==inp) inp.value=P; inp.disabled=readOnly;
+    if(!inp.dataset.ok){ inp.dataset.ok='1'; inp.addEventListener('change',async()=>{ const n=Math.round(Number(inp.value)); if(!(n>=1&&n<=60)){ toast('Use um prazo de 1 a 60 dias'); inp.value=prazoEntrada(); return; } if(n===prazoEntrada()) return; cfg.prazoEntrada=n; await persistCfg(`alterou o prazo da entrada para ${n} dias`); render(); }); } }
+  document.getElementById('entRegra').textContent=`A entrada vence até ${P} dias depois da venda; prazo maior só com ok de sócio. Na venda, o corretor manda os dados de pagamento e, na véspera, lembra o cliente. Venceu e não caiu: 1 a 2 dias o corretor liga, 3 a 4 dias um sócio entra, com 5 dias sai a decisão.`;
+  const semEnt=sales.filter(s=>s.entradaPaga===false); const viraram=semEnt.filter(s=>!isActive(s)).length;
+  const pctHist=semEnt.length?Math.round(viraram/semEnt.length*100):0;
+  document.getElementById('kpisEnt').innerHTML=`
+    <div class="kpi"><div class="label">Sem entrada paga</div><div class="kpi-value">${fmt(soma(pend.aguardando))}</div><div class="delta">${pend.aguardando.length} venda${pend.aguardando.length===1?'':'s'} · comissão em jogo</div></div>
+    <div class="kpi ${pend.atrasadas.length?'crit':''}"><div class="label">Entradas vencidas</div><div class="kpi-value" style="${pend.atrasadas.length?'color:var(--crit)':''}">${fmt(soma(pend.atrasadas))}</div><div class="delta">${pend.atrasadas.length} venda${pend.atrasadas.length===1?'':'s'} · ${pend.decidir.length} para decidir hoje</div></div>
+    <div class="kpi"><div class="label">Pagas sem confirmação</div><div class="kpi-value">${pend.confirmar.length}</div><div class="delta">${fmt(soma(pend.confirmar))} de comissão · conferir no extrato ou com o cliente</div></div>
+    <div class="kpi"><div class="label">Sem entrada, viram distrato</div><div class="kpi-value">${pctHist}%</div><div class="delta">${viraram} de ${semEnt.length} vendas com a entrada em aberto já distrataram</div></div>`;
+  const ultimo=s=>{ const l=Array.isArray(s.entradaContatos)?s.entradaContatos:[]; const u=l[l.length-1]; return u?`<span class="ent-ultimo">Último contato: ${fmtD(u.data)}${u.quem?' por '+esc(u.quem):''} · ${esc((PASSOS_ENTRADA[u.passo]||{}).titulo||u.passo||'')}</span>`:''; };
+  const desc=s=>`${esc(s.corretor)} · ${esc(s.empreendimento||s.construtora||'')} un. ${esc(s.unidade||'-')}${Number(s.entrada)>0?' · entrada '+fmt2(Number(s.entrada)):''}`;
+  const linha=x=>{ const s=x.s, k=x.passo, id=esc(s.id); const copia=['dados','lembrar','ligar','socio'].includes(k);
+    return `<div class="cobrow"><div class="who"><b>${esc(s.cliente)}</b><small>${desc(s)} · venda de ${fmtD(s.dataVenda||s.dataEntrada)} · ${esc(x.txt)}</small>${ultimo(s)}</div><div class="val tn">${fmt2(valor(x))}</div><div class="rowbtns">${copia?`<button class="btn sm" data-ent-copy="${id}:${k}">Copiar mensagem</button>`:''}${k!=='agendada'?`<button class="btn sm" data-ent-contato="${id}:${k}">Registrei contato</button>`:''}<button class="btn sm" data-ent-data="${id}">Nova data</button>${k==='decidir'?`<button class="btn sm" data-ent-distrato="${id}">Distrato</button>`:''}<button class="btn sm primary" data-ent-pago="${id}">Entrada paga</button></div></div>`; };
+  const grupos=Object.keys(PASSOS_ENTRADA).sort((a,b)=>PASSOS_ENTRADA[a].ordem-PASSOS_ENTRADA[b].ordem).map(k=>[k,pend.aguardando.filter(x=>x.passo===k).sort((a,b)=>String(a.venc).localeCompare(String(b.venc)))]).filter(([,arr])=>arr.length);
+  document.getElementById('entLista').innerHTML = grupos.length ? grupos.map(([k,arr])=>{ const p=PASSOS_ENTRADA[k]; return `<div class="cobgrp"><div class="gh"><span class="tag ${p.nivel}"><span class="dot"></span>${p.titulo}</span><span class="sub">${arr.length} venda${arr.length===1?'':'s'} · ${p.dica}</span><span class="tot tn">${fmt2(soma(arr))}</span></div>${arr.map(linha).join('')}</div>`; }).join('') : '<div class="empty">Nenhuma venda esperando a entrada.</div>';
+  const cc=document.getElementById('cardEntConfirmar'); cc.style.display=pend.confirmar.length?'':'none';
+  document.getElementById('entConfirmar').innerHTML = pend.confirmar.length ? `<div class="cobgrp">${pend.confirmar.sort((a,b)=>String(b.s.dataVenda||'').localeCompare(String(a.s.dataVenda||''))).map(x=>`<div class="cobrow"><div class="who"><b>${esc(x.s.cliente)}</b><small>${desc(x.s)} · venda de ${fmtD(x.s.dataVenda)}${x.s.origemCrm?' · veio do CRM':''}</small></div><div class="val tn">${fmt2(valor(x))}</div><div class="rowbtns"><button class="btn sm" data-ent-aberto="${esc(x.s.id)}">Ainda não pagou</button><button class="btn sm primary" data-ent-pago="${esc(x.s.id)}">Confirmar paga</button></div></div>`).join('')}</div>` : '';
+  const cf=document.getElementById('cardEntConflito'); cf.style.display=pend.conflito.length?'':'none';
+  document.getElementById('entConflito').innerHTML = pend.conflito.length ? `<div class="cobgrp">${pend.conflito.map(x=>`<div class="cobrow"><div class="who"><b>${esc(x.s.cliente)}</b><small>${desc(x.s)} · comissão da entrada recebida${x.rec.dataPago?' em '+fmtD(x.rec.dataPago):''}</small></div><div class="rowbtns"><button class="btn sm primary" data-ent-fix="${esc(x.s.id)}">Marcar entrada paga</button></div></div>`).join('')}</div>` : '';
+  const sec=document.getElementById('sec-entradas');
+  sec.querySelectorAll('[data-ent-copy]').forEach(b=>b.addEventListener('click',()=>{ const [id,k]=parte(b.dataset.entCopy); const s=sales.find(x=>x.id===id); if(s) copiarTexto(msgEntrada(s,k)); }));
+  sec.querySelectorAll('[data-ent-contato]').forEach(b=>b.addEventListener('click',()=>{ const [id,k]=parte(b.dataset.entContato); registrarContatoEntrada(id,k); }));
+  sec.querySelectorAll('[data-ent-data]').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.entData; askDate('Nova data para a entrada', addDays(today,3), d=>combinarEntrada(id,d), {future:true, label:'Dia em que o cliente vai pagar', hint:`Mais de ${P} dias depois da venda pede o ok de um sócio. A data fica no histórico da venda.`}); }));
+  sec.querySelectorAll('[data-ent-pago]').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.entPago; askDate('Entrada paga', today, d=>confirmEntrada(id,d), {label:'Dia em que o cliente pagou a entrada', hint:'A comissão da entrada entra no cronograma a partir desta data.'}); }));
+  sec.querySelectorAll('[data-ent-fix]').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.entFix; const s=sales.find(x=>x.id===id); askDate('Entrada paga', (s&&s.dataEntrada)||today, d=>confirmEntrada(id,d), {label:'Dia em que o cliente pagou a entrada', hint:'A comissão da entrada já caiu; isto só acerta o status da venda.'}); }));
+  sec.querySelectorAll('[data-ent-aberto]').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.entAberto; const s=sales.find(x=>x.id===id); askConfirm(`A entrada de ${esc(s?s.cliente:'')} ainda não foi paga?`,'A venda volta para a régua da entrada e aparece nos avisos até alguém confirmar.',{okLabel:'Ainda não pagou'}).then(ok=>{ if(ok) entradaEmAberto(id); }); }));
+  sec.querySelectorAll('[data-ent-distrato]').forEach(b=>b.addEventListener('click',()=>{ const s=sales.find(x=>x.id===b.dataset.entDistrato); if(s) openForm(s); }));
 }
 
 function msgClienteMulti(arr){ const s=arr[0].venda; const nome=(s.cliente||'').split(' ')[0]; if(arr.length===1) return msgCliente(arr[0]); return `Olá ${nome}, tudo bem? Aqui é ${s.corretor}, da Fortal Inteligência Imobiliária. Passando para lembrar das parcelas do seu contrato no ${s.empreendimento||s.construtora} (unidade ${s.unidade||'-'}) que constam em aberto junto à ${s.construtora}:\n${arr.map(p=>`• ${p.tipo} · ${fmt2(p.valorCliente)} · venceu em ${fmtD(p.dataCliente)}`).join('\n')}\nTotal em aberto: ${fmt2(arr.reduce((a,p)=>a+p.valorCliente,0))}. Consegue me confirmar se algum desses pagamentos já foi feito? Se precisar da 2ª via dos boletos ou de ajuda para regularizar, é só me chamar. Obrigado!`; }
@@ -1873,6 +2006,7 @@ function render(){
   if(view==='repasses') renderRepasses();
   if(view==='historico') renderHistorico();
   if(view==='cobrancas') renderCobrancas();
+  if(view==='entradas') renderEntradas();
   if(view==='fechamento') renderFechamento();
   renderAlerts();
   publicarResumo();

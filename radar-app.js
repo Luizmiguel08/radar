@@ -8,7 +8,7 @@
 const CFG = {
   url: 'https://rhgdztlhlqyhbbmioarm.supabase.co',
   chave: 'sb_publishable_ceb29zcFJiWznxyJ10k-tg_orA-Ht2d',
-  versao: '202611031130',
+  versao: '202611051525',
   intervalo: 20000,          // atualização com o app aberto
   completaCada: 15 * 60000   // recarga completa de tempos em tempos
 };
