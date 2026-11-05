@@ -8,7 +8,7 @@
 const CFG = {
   url: 'https://rhgdztlhlqyhbbmioarm.supabase.co',
   chave: 'sb_publishable_ceb29zcFJiWznxyJ10k-tg_orA-Ht2d',
-  versao: '202611051525',
+  versao: '202611051848',
   intervalo: 20000,          // atualização com o app aberto
   completaCada: 15 * 60000   // recarga completa de tempos em tempos
 };
@@ -63,7 +63,9 @@ function erroDoServidor(r){
     dados_invalidos: 'Dados recusados pelo servidor.',
     id_invalido: 'Identificador de venda inválido.',
     pin_invalido: 'O PIN precisa ter de 4 a 8 números.',
-    corretor_nao_encontrado: 'Salve o corretor antes de definir o PIN.'
+    corretor_nao_encontrado: 'Salve o corretor antes de definir o PIN.',
+    sem_acesso: 'O caixa é só para os sócios.',
+    nao_encontrado: 'Esse lançamento não existe mais no caixa.'
   };
   const e = new Error(m[r && r.erro] || 'O servidor recusou a operação.');
   e.code = r && r.erro; return e;
@@ -312,6 +314,30 @@ const usuario = {
   async canEdit(){ return nivel() === 'admin'; }
 };
 
+/* ---------- caixa: só o código de dono (altera) e o de sócio (só vê). Corretor não recebe nada ---------- */
+async function escreverCaixa(fn, args, ms){
+  if(nivel() !== 'admin') throw erroDoServidor({erro: 'somente_leitura'});
+  let r;
+  try{ r = await enfileirar(() => rpc(fn, Object.assign({p_codigo: codigo, p_quem: operador()}, args), ms)); }
+  catch(e){ if(e.rede){ estadoConexao(false); throw new Error('Sem internet: a alteração não foi salva.'); } throw e; }
+  if(r && r.ok === false){ if(r.erro === 'codigo_invalido') acessoRecusado(r); throw erroDoServidor(r); }
+  return r;
+}
+const caixa = {
+  podeEditar: () => nivel() === 'admin',
+  async carregar(){
+    let r;
+    try{ r = await rpc('radar_caixa', {p_codigo: codigo}, 45000); }
+    catch(e){ if(e.rede) throw new Error('sem internet. O caixa precisa de conexão.'); throw e; }
+    if(r && r.ok === false){ if(r.erro === 'codigo_invalido') acessoRecusado(r); throw erroDoServidor(r); }
+    return r;
+  },
+  importar: d => escreverCaixa('radar_caixa_importar', {p_lancamentos: d.lancamentos, p_saldos: d.saldos || {}, p_info: d.info || {}}, 90000),
+  salvar: (id, dados) => escreverCaixa('radar_caixa_salvar', {p_id: id, p_dados: dados}),
+  ajustar: (id, categoria) => escreverCaixa('radar_caixa_ajustar', {p_id: id, p_categoria: categoria || null}),
+  desfazer: id => escreverCaixa('radar_caixa_desfazer', {p_importacao: id})
+};
+
 let liberar; const pronto = new Promise(r => { liberar = r; });
 window.claude = {
   async use(nome){
@@ -319,6 +345,7 @@ window.claude = {
     await pronto;
     if(nome === 'db') return banco;
     if(nome === 'user') return usuario;
+    if(nome === 'caixa') return nivel() === 'admin' || nivel() === 'time' ? caixa : null;
     return null;
   }
 };
