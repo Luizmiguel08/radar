@@ -1,6 +1,6 @@
 // Radar de Comissões · service worker (app sem internet + avisos no celular)
-const V = 'radar-202611051848';
-const SHELL = ["./", "./index.html", "./radar-app.js?v=8a9c0c45ea", "./caixa.js?v=066d7f68b3", "./manifest.webmanifest", "./logo.png", "./icon-192.png", "./icon-512.png", "./badge-96.png", "./favicon-64.png", "./apple-touch-icon.png", "./vendor/chart.umd.js", "./vendor/jspdf.umd.min.js", "./vendor/jspdf.plugin.autotable.min.js", "./vendor/xlsx.full.min.js"];
+const V = 'radar-202611071040';
+const SHELL = ["./", "./index.html", "./radar-app.js?v=88e30d5235", "./caixa.js?v=f18fbac985", "./lucro.js?v=2350dac01e", "./manifest.webmanifest", "./logo.png", "./icon-192.png", "./icon-512.png", "./badge-96.png", "./favicon-64.png", "./apple-touch-icon.png", "./vendor/chart.umd.js", "./vendor/jspdf.umd.min.js", "./vendor/jspdf.plugin.autotable.min.js", "./vendor/xlsx.full.min.js"];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

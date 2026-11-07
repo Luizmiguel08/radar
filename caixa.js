@@ -437,7 +437,7 @@ function kpisHtml(R, ano, p){
   const venc = M.fixos.filter(f => f.nivel === 'crit');
   return `<div class="kpis">
     <div class="kpi"><div class="label">Disponível agora</div><div class="kpi-value tn">${M.saldoConta == null ? '—' : R0(disp)}</div><div class="delta">${M.saldoConta == null ? 'Importe um extrato para ver o saldo.' : `Conta ${R2(M.saldoConta)} em ${dBR(M.ultimoDia)} · ${cx ? `caixinha ${R0(cx.estimada)}, estimada a partir de ${dBR(cx.data)}` : 'caixinha não informada'}`}</div>${p ? '<button class="btn sm ghost cx-kbtn" type="button" data-cx="caixinha">Atualizar a caixinha</button>' : ''}</div>
-    <div class="kpi"><div class="label">Resultado operacional ${ano}</div><div class="kpi-value tn">${R0(res)}</div><div class="delta">Receita de intermediação ${R0(rec)}</div></div>
+    <div class="kpi"><div class="label">Resultado operacional ${ano}</div><div class="kpi-value tn">${R0(res)}</div><div class="delta">Receita de intermediação ${R0(rec)}${rec > 0 ? ` · margem de ${(res / rec * 100).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}%` : ''}</div></div>
     <div class="kpi"><div class="label">Retiradas dos sócios ${ano}</div><div class="kpi-value tn">${R0(soc)}</div><div class="delta">${res > 0 ? `${Math.round(soc / res * 100)}% do resultado operacional` : 'Retiradas menos aportes'}</div></div>
     <div class="kpi ${venc.length ? 'crit' : ''}"><div class="label">Contas que não apareceram</div><div class="kpi-value tn" style="${venc.length ? 'color:var(--crit)' : ''}">${venc.length}</div><div class="delta">${venc.length ? h(venc.slice(0, 3).map(f => f.n).join(', ')) + (venc.length > 3 ? '…' : '') : 'As contas fixas estão em dia.'}</div></div>
   </div>`;
@@ -778,6 +778,20 @@ function fonteDemo(){
   };
 }
 
-raiz.RadarCaixa = {abrir};
+/* Resumo de um ano para a Visão geral (cartão "Margem da operação", lucro.js): as linhas do resultado com os
+   mesmos dados e regras desta tela. Carrega o caixa uma vez; a tela aproveita o que já veio. */
+async function resumo(fonte, hoje, ano){
+  if(!E.fonte) E.fonte = fonte || null;
+  if(!E.fonte) return null;
+  if(!E.M){
+    if(!E.espera) E.espera = Promise.resolve(E.fonte.carregar()).then(d => { if(!E.M){ E.dados = d; E.M = montar(d, hoje); E.versao++; } }).finally(() => { E.espera = null; });
+    await E.espera;
+  }
+  const R = resultado(E.M.lancs, Number(ano), E.M.saldos, E.M.cfg.inicio);
+  return {ano: R.ano, ultimoDia: E.M.ultimoDia, comMov: R.comMov.slice(), conferencia: R.conferencia.slice(),
+    linhas: R.linhas.map(l => ({rot: l.rot, soma: l.soma, pos: l.pos, v: l.v.slice(), total: l.total}))};
+}
+
+raiz.RadarCaixa = {abrir, resumo};
 
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -641,8 +641,9 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=8a9c0c45ea"></script>
-<script src="caixa.js?v=066d7f68b3"></script>
+<script src="radar-app.js?v=88e30d5235"></script>
+<script src="caixa.js?v=f18fbac985"></script>
+<script src="lucro.js?v=2350dac01e"></script>
 <script>
 (function(){
 'use strict';
@@ -2008,7 +2009,7 @@ document.querySelectorAll('#hMode .chip').forEach(c=>c.addEventListener('click',
 document.querySelectorAll('#hChips .chip').forEach(c=>c.addEventListener('click',()=>{ histFilter=c.dataset.hp; renderHistorico(); }));
 function render(){
   renderPeriod(); renderNav();
-  if(view==='overview'){ renderKpis(); renderCharts(); renderNext(); }
+  if(view==='overview'){ renderKpis(); renderCharts(); renderNext(); if(window.RadarLucro) window.RadarLucro.desenhar(); }
   if(view==='sales') renderSales();
   if(view==='installments') renderInstallments();
   if(view==='brokers'){ renderCharts(); renderBrokers(); renderExtratoControls(); }
@@ -2026,7 +2027,7 @@ function render(){
 let toastT; function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
 
 document.getElementById('btnNew').addEventListener('click',()=>openForm(null));
-window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today};
+window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today,periodo:()=>({ano:selYear,mes:selMonth}),motor:{schedule,isActive,nUnits,isCeo},fmt};
 ['fSearch','fBroker','fBuilder','fStatus'].forEach(id=>document.getElementById(id).addEventListener('input',renderSales));
 document.querySelectorAll('#instChips .chip').forEach(c=>c.addEventListener('click',()=>{ instFilter=c.dataset.f; renderInstallments(); }));
 ['iSearch','iBroker','iBuilder','iType','iFrom','iTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderInstallments));
