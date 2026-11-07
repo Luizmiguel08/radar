@@ -778,20 +778,28 @@ function fonteDemo(){
   };
 }
 
-/* Resumo de um ano para a Visão geral (cartão "Margem da operação", lucro.js): as linhas do resultado com os
-   mesmos dados e regras desta tela. Carrega o caixa uma vez; a tela aproveita o que já veio. */
-async function resumo(fonte, hoje, ano){
+/* O caixa montado (lançamentos classificados, saldos, caixinha), com os mesmos dados e regras desta tela.
+   Carrega uma vez; a tela e a Visão geral (lucro.js e painel.js) aproveitam o que já veio. */
+async function garantir(fonte, hoje){
   if(!E.fonte) E.fonte = fonte || null;
   if(!E.fonte) return null;
   if(!E.M){
     if(!E.espera) E.espera = Promise.resolve(E.fonte.carregar()).then(d => { if(!E.M){ E.dados = d; E.M = montar(d, hoje); E.versao++; } }).finally(() => { E.espera = null; });
     await E.espera;
   }
-  const R = resultado(E.M.lancs, Number(ano), E.M.saldos, E.M.cfg.inicio);
-  return {ano: R.ano, ultimoDia: E.M.ultimoDia, comMov: R.comMov.slice(), conferencia: R.conferencia.slice(),
+  return E.M;
+}
+/* Resumo de um ano para o cartão "Margem da operação" (lucro.js): as linhas do resultado. */
+async function resumo(fonte, hoje, ano){
+  const M = await garantir(fonte, hoje);
+  if(!M) return null;
+  const R = resultado(M.lancs, Number(ano), M.saldos, M.cfg.inicio);
+  return {ano: R.ano, ultimoDia: M.ultimoDia, comMov: R.comMov.slice(), conferencia: R.conferencia.slice(),
     linhas: R.linhas.map(l => ({rot: l.rot, soma: l.soma, pos: l.pos, v: l.v.slice(), total: l.total}))};
 }
+/* O caixa montado inteiro, para o resumo da Visão geral (painel.js) somar qualquer trecho de dias. Só leitura. */
+const modelo = (fonte, hoje) => garantir(fonte, hoje);
 
-raiz.RadarCaixa = {abrir, resumo};
+raiz.RadarCaixa = {abrir, resumo, modelo};
 
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -641,9 +641,11 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=88e30d5235"></script>
-<script src="caixa.js?v=f18fbac985"></script>
+<script src="radar-app.js?v=33f3c12c19"></script>
+<script src="caixa.js?v=3ef95b65a4"></script>
 <script src="lucro.js?v=2350dac01e"></script>
+<script src="painel.js?v=0440e6176e"></script>
+<script src="cronograma.js?v=12450fdf60"></script>
 <script>
 (function(){
 'use strict';
@@ -2009,9 +2011,9 @@ document.querySelectorAll('#hMode .chip').forEach(c=>c.addEventListener('click',
 document.querySelectorAll('#hChips .chip').forEach(c=>c.addEventListener('click',()=>{ histFilter=c.dataset.hp; renderHistorico(); }));
 function render(){
   renderPeriod(); renderNav();
-  if(view==='overview'){ renderKpis(); renderCharts(); renderNext(); if(window.RadarLucro) window.RadarLucro.desenhar(); }
+  if(view==='overview'){ renderKpis(); renderCharts(); renderNext(); if(window.RadarLucro) window.RadarLucro.desenhar(); if(window.RadarPainel) window.RadarPainel.desenhar(); }
   if(view==='sales') renderSales();
-  if(view==='installments') renderInstallments();
+  if(view==='installments'){ renderInstallments(); if(window.RadarCronograma) window.RadarCronograma.desenhar(); }
   if(view==='brokers'){ renderCharts(); renderBrokers(); renderExtratoControls(); }
   if(view==='config') renderConfig();
   if(view==='distratos') renderDistratos();
@@ -2027,7 +2029,28 @@ function render(){
 let toastT; function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
 
 document.getElementById('btnNew').addEventListener('click',()=>openForm(null));
-window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today,periodo:()=>({ano:selYear,mes:selMonth}),motor:{schedule,isActive,nUnits,isCeo},fmt};
+/* Ações da tela Recebimentos nova (cronograma.js): os mesmos passos dos botões de sempre, com as mesmas perguntas. */
+const acoesRecebimentos = {
+  pode: () => !readOnly && !brokerMode,
+  recebido(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); const sug=(p&&p.dataRecebimento&&p.dataRecebimento<=today)?p.dataRecebimento:today; askDate('Registrar recebimento', sug, (d,val,ck)=>togglePaid(id,Number(i),true,d,val,ck), {valor:p?p.comissao:0, check:(p&&p.corretor>0)?{label:`Repasse de ${fmt2(p.corretor)} ao corretor ${esc(s.corretor)} feito na mesma data`,checked:true}:null}); },
+  desfazer(id, i){ togglePaid(id,Number(i),false); },
+  clientePagou(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); const sug=(p&&p.dataCliente&&p.dataCliente<=today)?p.dataCliente:today; askDate('Cliente pagou a parcela', sug, d=>setClientePagou(id,Number(i),true,d), {label:'Data em que o cliente pagou',hint:`${p?p.tipo:''} de ${fmt(p?p.valorCliente:0)} · ${esc(s.construtora)}. A comissão de ${fmt2(p?p.comissao:0)} passa a ser prevista para a data de repasse da construtora a partir desse dia. Quando a construtora pagar, clique em "Recebido".`}); },
+  entradaPaga(id){ const s=sales.find(x=>x.id===id); if(!s) return; const c0=schedule(s).list[0]; askDate('Cliente pagou a entrada', today, d=>confirmEntrada(id,d), {label:'Data em que o cliente pagou a entrada', hint:`Entrada de ${fmt(s.entrada||0)} · ${esc(s.construtora)}. A comissão de ${fmt2(c0?c0.comissao:0)} passa a ser prevista para ${fmtD(repasseDate(today,s.construtora))} (ajusta conforme a data informada). Depois, quando a construtora pagar, clique em "Recebido".`}); },
+  adiar(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); askDate('Cliente não pagou · nova previsão', p&&p.dataCliente?addMonths(p.dataCliente,1):today, (d,val)=>setPrevista(id,Number(i),d,val), {future:true,label:'Nova data prevista para o cliente pagar',hint:'A parcela sai de "Cliente não pagou" e volta para o cronograma na nova data. Fica registrado no histórico.',valor:p?p.comissao:0,valorLabel:'Valor previsto da comissão (R$)',valorHint:'Mantenha, salvo se a construtora reprogramou o valor.'}); },
+  ajustarData(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); askDate('Ajustar previsão', p&&p.dataCliente||today, (d,val)=>setPrevista(id,Number(i),d,val), {future:true,label:'Data em que o cliente paga a parcela',hint:`O repasse da ${esc(s.construtora)} será calculado a partir dessa data (regra da construtora). As parcelas seguintes seguem +30 dias.`,valor:p?p.comissao:0,valorLabel:'Valor previsto da comissão (R$)',valorHint:'Altere só se a construtora programou um valor diferente (ex.: cronograma do portal VitaVendas / One Bela).'}); },
+  cobrado(id, i){ marcarCobrado(id, Number(i)); },
+  copiarMensagem(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const sc=schedule(s); const arr=sc.list.filter(p=>p.status==='cliente').map(p=>({...p, venda:s})).sort((a,b)=>a.dataCliente.localeCompare(b.dataCliente)); const p=sc.list.find(x=>x.idx===Number(i)); copiarTexto(arr.length>1 ? msgClienteMulti(arr) : msgCliente({...(arr[0]||p), venda:s})); },
+  abrirVenda(id){ const s=sales.find(x=>x.id===id); if(s) openForm(s); },
+  podeExportar: () => !!downloadsNs,
+  async exportar(lista, nome){
+    if(!downloadsNs){ toast('Exportar não está disponível aqui'); return; }
+    const head=['Repasse previsto','Cliente pagou','Recebido em','Cliente','Corretor','Construtora','Lançamento','Cliente paga','Comissão','Empresa','Corretor (parte)','Status','Repasse ao corretor'];
+    const rows=(lista||[]).map(p=>[fmtD(p.dataRecebimento),fmtD(p.dataCliente),p.pago?fmtD(p.dataPago||p.dataRecebimento):'',p.venda.cliente,p.venda.corretor,p.venda.construtora,p.tipo,(p.valorCliente||0).toFixed(2).replace('.',','),p.comissao.toFixed(2).replace('.',','),p.empresa.toFixed(2).replace('.',','),p.corretor.toFixed(2).replace('.',','),p.status,p.repassado?'sim':'não']);
+    const csv='﻿'+[head,...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+    try{ await downloadsNs.save({filename:`recebimentos-${nome||'lista'}-${today}.csv`,data:csv}); toast('Planilha salva'); }catch(e){ if(e&&e.code!=='declined') toast('Não foi possível exportar'); }
+  }
+};
+window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today,periodo:()=>({ano:selYear,mes:selMonth}),motor:{schedule,isActive,nUnits,isCeo},fmt,acoes:acoesRecebimentos,instFiltro:()=>instFilter};
 ['fSearch','fBroker','fBuilder','fStatus'].forEach(id=>document.getElementById(id).addEventListener('input',renderSales));
 document.querySelectorAll('#instChips .chip').forEach(c=>c.addEventListener('click',()=>{ instFilter=c.dataset.f; renderInstallments(); }));
 ['iSearch','iBroker','iBuilder','iType','iFrom','iTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderInstallments));
