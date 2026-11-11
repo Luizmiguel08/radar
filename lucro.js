@@ -1,12 +1,15 @@
 /* Radar de Comissões · Lucro por projeto e Margem da operação (Visão geral)
    Lucro por projeto: das vendas do mês ou do ano, o que fica na empresa em cada projeto: a comissão menos o repasse
-   ao corretor (metade de cada parcela; nas vendas dos gestores marcados como CEO no Radar, nada). Antes de impostos
+   ao corretor (o % de cada corretor em Ajustes, 50% por padrão; nas vendas dos gestores marcados como CEO, nada). Antes de impostos
    e despesas. Os números saem do mesmo motor das telas (RadarTelas.motor), pela data da venda; distratos ficam fora.
    Margem da operação: pelo extrato da tela Caixa (RadarCaixa.resumo), quanto da comissão que entrou foi para repasses,
    para custos e quanto sobrou, no mês, no ano e mês a mês.
    Só dono e sócios veem; corretor não. A Visão geral chama RadarLucro.desenhar() a cada render. */
 (function(){
 'use strict';
+// o que fica na empresa: a comissão menos a parte do corretor (o % do cadastro dele; gestor 0%)
+function parteEmpresa(m, s, com){ const pc = m.pctCorretor ? m.pctCorretor(s) : (m.isCeo(s.corretor) ? 0 : 50);
+  return pc === 50 ? com / 2 : pc === 0 ? com : com * (100 - pc) / 100; }
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nz = t => String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -78,7 +81,7 @@ function dadosLucro(t, ano, mes){
     const k = nz(bruto) || '-';
     const g = grupos.get(k) || Object.assign({nome: nomes.get(k) || bruto || 'Sem projeto'}, zero());
     const com = Number(m.schedule(s).total) || 0;
-    const emp = m.isCeo(s.corretor) ? com : com / 2;
+    const emp = parteEmpresa(m, s, com);
     const un = Number(m.nUnits(s)) || 1, vgv = Number(s.valorImovel) || 0;
     for(const o of [g, tot]){ o.vendas++; o.unid += un; o.vgv += vgv; o.com += com; o.emp += emp; o.cor += com - emp; }
     grupos.set(k, g);
@@ -142,7 +145,7 @@ function desenharLucro(){
   const tabela = `<div class="tscroll"><table><thead><tr><th>Projeto</th><th class="r">Vendas</th><th class="r">VGV</th><th class="r">Comissão</th><th class="r">Lucro</th><th class="r">Margem s/ VGV</th><th class="r">Lucro por venda</th><th class="r">% do lucro</th></tr></thead>`
     + `<tbody>${L.map(linha).join('')}</tbody>`
     + `<tfoot><tr><td>Total</td><td class="r">${T.vendas}</td><td class="r">${fmt(T.vgv)}</td><td class="r">${fmt(T.com)}<span class="sub">${pctL(T.com, T.vgv)}</span></td><td class="r">${fmt(T.emp)}</td><td class="r">${pctL(T.emp, T.vgv)}</td><td class="r">${fmt(T.emp / T.vendas)}</td><td class="r">100%</td></tr></tfoot></table></div>`;
-  const nota = `<div class="ra-lucro-nota">Lucro = comissão das vendas de ${esc(rot)} menos o repasse ao corretor (metade da comissão; nas vendas dos gestores, a comissão fica toda na empresa), antes de impostos e despesas. Conta pela data da venda; distratos ficam fora.</div>`;
+  const nota = `<div class="ra-lucro-nota">Lucro = comissão das vendas de ${esc(rot)} menos o repasse ao corretor (o % de cada um em Ajustes, 50% por padrão; nas vendas dos gestores, a comissão fica toda na empresa), antes de impostos e despesas. Conta pela data da venda; distratos ficam fora.</div>`;
   el.innerHTML = head + strip + `<div class="ra-dest">${dest}</div>` + lbs + tabela + nota;
 }
 

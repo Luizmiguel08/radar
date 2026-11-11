@@ -9,6 +9,9 @@
    Só dono e sócios veem. Os números saem do mesmo motor das telas (RadarTelas.motor) e do caixa (RadarCaixaNucleo). */
 (function(){
 'use strict';
+// o que fica na empresa: a comissão menos a parte do corretor (o % do cadastro dele; gestor 0%)
+function parteEmp(m, s, c){ const pc = m.pctCorretor ? m.pctCorretor(s) : (m.isCeo(s.corretor) ? 0 : 50);
+  return pc === 50 ? c / 2 : pc === 0 ? c : c * (100 - pc) / 100; }
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nz = t => String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -58,7 +61,7 @@ function vendasDe(t, a, b){
     if(!d || d < a || d > b) continue;
     if(!m.isActive(s)){ r.dn++; r.dvgv += Number(s.valorImovel) || 0; continue; }
     const c = Number(m.schedule(s).total) || 0;
-    r.n++; r.un += Number(m.nUnits(s)) || 1; r.vgv += Number(s.valorImovel) || 0; r.com += c; r.emp += m.isCeo(s.corretor) ? c : c / 2;
+    r.n++; r.un += Number(m.nUnits(s)) || 1; r.vgv += Number(s.valorImovel) || 0; r.com += c; r.emp += parteEmp(m, s, c);
   }
   return r;
 }
