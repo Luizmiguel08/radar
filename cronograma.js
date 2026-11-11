@@ -1,6 +1,12 @@
 /* Radar de Comissões · Cronograma de recebimentos, organizado por situação
-   - Uma faixa com as cinco situações. Cada lançamento está em uma só, então a soma da faixa é o total:
-     Atrasado (a construtora não repassou), Cliente não pagou, Aguardando entrada, A receber e Recebido.
+   - Uma faixa com as seis situações. Cada lançamento está em uma só, então a soma da faixa é o total:
+     Atrasado (a construtora não repassou), Sem confirmação (parcela vencida sem confirmação do cliente),
+     Aguardando entrada, Cliente já pagou (só falta a construtora), Parcela a vencer (depende do cliente) e Recebido.
+     "A receber" (atalhos antigos e do resumo) mostra Cliente já pagou e Parcela a vencer juntos.
+   - Em Sem confirmação e Parcela a vencer dá para marcar várias parcelas como pagas pelo cliente de uma vez
+     (por exemplo, a lista do mês de uma construtora), cada uma na data de vencimento ou todas numa data.
+   - No detalhe da venda, "Cronograma da construtora" grava as datas e os valores que a construtora programou
+     no portal (campo programado da venda); o motor usa esse cronograma no lugar da entrada e das parcelas.
    - Período só pelo "Período rápido" (com datas livres dentro dele).
    - Três jeitos de ver: lista, por cliente e por construtora.
    - Nos atrasos, a idade da dívida em faixas (até 7, 8 a 30, 31 a 60 e mais de 60 dias).
@@ -44,12 +50,20 @@ const ultimoDia = (y, m) => new Date(y, m, 0).getDate();
 /* ---------- situações e faixas de atraso ---------- */
 const BALDES = [
   {id: 'atrasado', rot: 'Atrasado', dica: 'a construtora não repassou', um: 'lançamento', varios: 'lançamentos'},
-  {id: 'cliente', rot: 'Cliente não pagou', dica: 'parcela do cliente vencida', um: 'parcela', varios: 'parcelas'},
+  {id: 'cliente', rot: 'Sem confirmação', dica: 'parcela vencida, ninguém confirmou se o cliente pagou', um: 'parcela', varios: 'parcelas'},
   {id: 'aguardando', rot: 'Aguardando entrada', dica: 'começa quando o cliente pagar a entrada', um: 'venda', varios: 'vendas'},
-  {id: 'areceber', rot: 'A receber', dica: 'programado', um: 'lançamento', varios: 'lançamentos'},
+  {id: 'pago', rot: 'Cliente já pagou', dica: 'só falta a construtora repassar', um: 'lançamento', varios: 'lançamentos'},
+  {id: 'avencer', rot: 'Parcela a vencer', dica: 'depende do cliente pagar', um: 'parcela', varios: 'parcelas'},
   {id: 'recebido', rot: 'Recebido', dica: 'já caiu na conta', um: 'lançamento', varios: 'lançamentos'}
 ];
 const BALDE = Object.fromEntries(BALDES.map(b => [b.id, b]));
+// "A receber" (atalhos antigos e do resumo): as duas situações do que ainda vai entrar no prazo
+const ARECEBER = new Set(['pago', 'avencer']);
+BALDE.areceber = {id: 'areceber', rot: 'A receber', dica: 'cliente já pagou e parcelas a vencer', um: 'lançamento', varios: 'lançamentos'};
+// marcar várias: só parcela de cliente ainda sem confirmação
+const MARCAVEL = new Set(['cliente', 'avencer']);
+const marcavel = it => MARCAVEL.has(it.b) && it.p.idx > 0 && !it.p.pago && !it.p.clientePagou;
+const chave = it => it.s.id + '|' + it.p.idx;
 const FAIXAS = [
   {id: 'a', rot: 'até 7 dias', de: -Infinity, ate: 7},
   {id: 'b', rot: '8 a 30 dias', de: 8, ate: 30},
@@ -58,7 +72,7 @@ const FAIXAS = [
 ];
 const faixaDe = d => (FAIXAS.find(f => d >= f.de && d <= f.ate) || FAIXAS[0]).id;
 const ATRASO = new Set(['atrasado', 'cliente', 'aguardando']);
-const baldeDe = p => p.pago ? 'recebido' : p.status === 'atrasado' ? 'atrasado' : p.status === 'cliente' ? 'cliente' : p.status === 'aguardando' ? 'aguardando' : 'areceber';
+const baldeDe = p => p.pago ? 'recebido' : p.status === 'atrasado' ? 'atrasado' : p.status === 'cliente' ? 'cliente' : p.status === 'aguardando' ? 'aguardando' : p.clientePagou ? 'pago' : 'avencer';
 const prazoEntrada = cfg => { const n = Math.round(Number(cfg && cfg.prazoEntrada)); return n >= 1 && n <= 60 ? n : 7; };
 // a mesma régua da tela Entradas: data combinada, ou a data da entrada, ou a venda mais o prazo
 const vencEntrada = (s, hoje, P) => (s.entradaCombinada && s.entradaCombinada.data) || s.dataEntrada || addD(s.dataVenda || s.dataEntrada || hoje, P);
@@ -83,7 +97,7 @@ function intervalo(p, hoje, de, ate){
 }
 
 /* ---------- estado da tela ---------- */
-const C = {balde: null, modo: 'lista', faixa: null, q: '', corretor: '', construtora: '', tipo: '', periodo: '', de: '', ate: '', aberto: null, limite: 80, abertos: new Set(), fechados: new Set()};
+const C = {balde: null, modo: 'lista', faixa: null, q: '', corretor: '', construtora: '', tipo: '', periodo: '', de: '', ate: '', aberto: null, limite: 80, abertos: new Set(), fechados: new Set(), marcar: false, sel: new Set()};
 
 /* ---------- dados ---------- */
 function montar(t){
@@ -270,7 +284,7 @@ const CSS_CRONO = `
 body.broker #raCrono{display:none!important}
 /* a tela nova toma o lugar dos indicadores, das abas e da tabela antiga (só depois de desenhada) */
 body.rc-ativo #sec-installments > :not(#raCrono){display:none!important}
-@media (prefers-reduced-motion: reduce){.rc-pn,.rc-fundo{transition:none}.rc-pn{transform:none}}
+@media (prefers-reduced-motion: reduce){.rc-pn,.rc-fundo,.rc-dlg{transition:none}.rc-pn{transform:none}}
 @media (max-width:1100px){
   .rc-l{grid-template-columns:100px minmax(0,1fr) minmax(140px,.9fr) 150px 112px}
   .rc-lista.tudo .rc-l{grid-template-columns:100px minmax(0,1fr) 140px 130px 150px 112px}
@@ -312,6 +326,72 @@ body.rc-ativo #sec-installments > :not(#raCrono){display:none!important}
   .rc-parc th,.rc-parc td{padding:6px 4px;font-size:12px}
   .rc-parc .rc-tag{padding:2px 7px;font-size:11px}
 }
+/* seis situações: as linhas da faixa saem do vão entre os cartões */
+.rc-faixa{grid-template-columns:repeat(6,minmax(0,1fr)) auto;gap:1px;background:var(--line)}
+.rc-b{border-right:0}
+.rc-b.pago{--c:var(--ra-rec);--cb:var(--ra-rec-bg)}
+.rc-b.avencer{--c:var(--ra-mut);--cb:var(--surface-2)}
+.rc-tag.pago{background:var(--ra-rec-bg);color:var(--blue-ink)} .rc-tag.avencer{background:var(--surface-2);color:var(--ink-2)}
+/* marcar várias */
+.rc-marcar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px}
+.rc-marcar small{font-size:12px;color:var(--ra-mut)}
+.rc-l .q.ck{display:flex;gap:10px;align-items:flex-start}
+.rc-ck{display:inline-grid;place-items:center;min-width:24px;min-height:24px;flex:none;cursor:pointer}
+.rc-ck input{width:18px;height:18px;margin:0;accent-color:var(--blue);cursor:pointer}
+.rc-l.marcada{background:var(--blue-tint)}
+.rc-g .gsel{border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font-size:12px;font-weight:700;padding:4px 9px;color:var(--blue-ink);min-height:30px}
+.rc-sel{position:sticky;bottom:10px;z-index:3;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 2px;padding:10px 12px;background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 8px 24px rgba(6,17,44,.16)}
+.rc-sel .txt{font-size:13px;color:var(--ink-2)}
+.rc-sel .txt b{color:var(--ink);font-variant-numeric:tabular-nums}
+.rc-sel .sp{flex:1}
+.rc-dlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%);opacity:0;width:min(440px,calc(100vw - 32px));background:var(--surface);border-radius:14px;z-index:47;box-shadow:0 24px 60px rgba(6,17,44,.3);padding:18px 18px 14px;transition:opacity .2s,transform .25s cubic-bezier(.2,.8,.2,1)}
+.rc-dlg.on{opacity:1;transform:translate(-50%,-50%)}
+.rc-dlg h2{font-size:16px;margin:0 0 4px}
+.rc-dlg p{font-size:12.5px;color:var(--ra-mut);margin:0 0 12px;line-height:1.45}
+.rc-dlg label.op{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line-strong);border-radius:10px;margin-bottom:8px;font-size:13px;cursor:pointer}
+.rc-dlg label.op small{display:block;font-size:12px;color:var(--ra-mut)}
+.rc-dlg input[type=date]{margin-top:6px;min-height:36px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:6px 10px}
+.rc-dlg .bts{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.rc-fundo.dlg{z-index:46}
+.rc-h3{display:flex;align-items:center;gap:8px;justify-content:space-between;margin:0 0 8px;flex-wrap:wrap}
+.rc-h3 h3{margin:0}
+.rc-prog-nota{font-size:12px;color:var(--ra-mut);margin:-2px 0 8px}
+.rc-dlg.larga{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 40px);display:flex;flex-direction:column}
+.rc-dlg .rc-linhas{overflow:auto;display:flex;flex-direction:column;gap:6px;padding:2px;margin:0 -2px}
+.rc-dlg .rc-lin{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 40px;gap:8px;align-items:center}
+.rc-dlg .rc-lin .n{font-size:12px;font-weight:700;color:var(--ra-mut);text-align:right}
+.rc-dlg .rc-lin input{width:100%;min-width:0;min-height:38px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:6px 9px;font-variant-numeric:tabular-nums}
+.rc-dlg .rc-lin .x{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);font-size:18px;line-height:1}
+.rc-dlg .rc-cab-lin{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 40px;gap:8px;font-size:12px;font-weight:700;color:var(--ra-mut)}
+.rc-dlg .rc-tot{font-size:12.5px;color:var(--ink-2);margin:10px 0 0}
+.rc-dlg .rc-tot b{font-variant-numeric:tabular-nums}
+.rc-dlg .rc-tot.dif b{color:var(--ra-cli)}
+.rc-dlg .bts .esq{margin-right:auto}
+.rc-lista.marcando .rc-l{grid-template-columns:150px minmax(0,1.25fr) minmax(170px,1fr) 170px 40px}
+.rc-lista.marcando .rc-cab-lista span:first-child{padding-left:34px}
+@media (max-width:1180px){
+  .rc-faixa{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rc-b.tudo{grid-column:1 / -1;flex-direction:row;gap:8px;min-height:44px}
+}
+@media (max-width:820px){
+  .rc-faixa{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rc-b,.rc-b.recebido{border-bottom:0}
+  .rc-sel{bottom:8px}
+  .rc-sel .btn{min-height:40px}
+  .rc-lista.marcando .rc-l{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"q vl" "cl cl" "tp tp"}
+  .rc-lista.marcando .rc-l .ac{display:none}
+  .rc-g .t{order:1}
+  .rc-g .gsel{order:2;margin-left:22px}
+}
+@media (max-width:520px){
+  .rc-dlg .rc-lin,.rc-dlg .rc-cab-lin{grid-template-columns:16px minmax(0,1fr) 88px 44px;gap:6px}
+  .rc-dlg .rc-lin input{min-height:44px;padding:6px 8px;font-size:16px}
+  .rc-dlg .rc-lin .x{width:44px;height:44px}
+  .rc-dlg [data-add]{min-height:44px}
+  .rc-dlg .bts{flex-wrap:wrap}
+  .rc-dlg .bts .btn{white-space:nowrap;min-height:44px}
+  .rc-dlg .bts .esq{order:3;flex:1 0 100%;margin:2px 0 0}
+}
 `;
 const estilo = document.createElement('style'); estilo.textContent = CSS_CRONO; document.head.appendChild(estilo);
 
@@ -332,7 +412,8 @@ function principal(it, hoje){
   if(b === 'atrasado') return {acao: 'recebido', rot: 'Recebido'};
   if(b === 'cliente') return {acao: 'clientePagou', rot: 'Cliente pagou'};
   if(b === 'aguardando') return {acao: 'entradaPaga', rot: 'Entrada paga'};
-  if(b === 'areceber' && p.dataRecebimento && p.dataRecebimento <= addD(segunda(hoje), 6)) return {acao: 'recebido', rot: 'Recebido'};
+  if(b === 'pago' && p.dataRecebimento && p.dataRecebimento <= addD(segunda(hoje), 6)) return {acao: 'recebido', rot: 'Recebido'};
+  if(b === 'avencer' && p.idx > 0 && p.dataCliente && p.dataCliente <= addD(hoje, 7)) return {acao: 'clientePagou', rot: 'Cliente pagou'};
   return null;
 }
 function quando(it, hoje){
@@ -341,6 +422,8 @@ function quando(it, hoje){
   if(b === 'cliente') return `<b>${dm(p.dataCliente)}</b><small class="cli">venceu há ${pl(it.idade, 'dia', 'dias')}</small>`;
   if(b === 'aguardando') return `<b>${dm(it.venc)}</b>${it.idade > 0 ? `<small class="atr">entrada venceu há ${pl(it.idade, 'dia', 'dias')}</small>` : it.idade === 0 ? '<small>entrada vence hoje</small>' : `<small>entrada vence em ${pl(-it.idade, 'dia', 'dias')}</small>`}`;
   if(b === 'recebido') return `<b>${dm(p.dataPago || p.dataCaixa)}</b><small class="ok">recebido</small>`;
+  if(b === 'pago') return `<b>${p.dataRecebimento ? dm(p.dataRecebimento) : 'sem data'}</b><small class="ok">${p.programado ? 'programado pela construtora' : (p.idx === 0 && !p.semEntrada ? 'entrada paga ' : 'cliente pagou ') + dm(p.dataClientePagou || p.dataCliente)}</small>`;
+  if(b === 'avencer') return `<b>${p.dataCliente ? dm(p.dataCliente) : 'sem data'}</b><small>${p.estimada ? 'previsão: +30 dias' : p.manual ? 'data ajustada' : p.dataRecebimento ? 'repasse ' + dm(p.dataRecebimento) : ''}</small>`;
   const sub = p.idx > 0 && p.clientePagou ? `<small class="ok">cliente pagou ${dm(p.dataClientePagou || p.dataCliente)}</small>`
     : p.estimada ? '<small>previsão: +30 dias</small>' : p.manual ? '<small>data ajustada</small>' : p.idx > 0 && p.dataCliente ? `<small>cliente paga ${dm(p.dataCliente)}</small>` : '';
   return `<b>${p.dataRecebimento ? dm(p.dataRecebimento) : 'sem data'}</b>${sub}`;
@@ -354,13 +437,15 @@ function linha(it, hoje, tudo){
   const sub = agu ? `entrada ${R2(p.comissao)}` : it.v.ceo || !p.corretor ? 'fica toda na empresa' : `empresa ${R2(p.empresa)}`;
   const tp = agu ? `Entrada + ${pl(Math.max(0, it.sc.list.length - 1), 'parcela', 'parcelas')}` : esc(it.rotulo);
   const sel = C.aberto && C.aberto.id === s.id && C.aberto.idx === p.idx ? ' sel' : '';
-  return `<li class="rc-l${sel}" data-id="${esc(s.id)}" data-idx="${p.idx}">`
-    + `<div class="q">${quando(it, hoje)}</div>`
+  const ck = C.marcar && marcavel(it);
+  const marcada = ck && C.sel.has(chave(it));
+  return `<li class="rc-l${sel}${marcada ? ' marcada' : ''}" data-id="${esc(s.id)}" data-idx="${p.idx}"${ck ? ' data-ck="1"' : ''}>`
+    + (ck ? `<div class="q ck"><label class="rc-ck"><input type="checkbox" data-ck${marcada ? ' checked' : ''} aria-label="${esc(`Marcar ${it.rotulo} de ${s.cliente || 'cliente'}`)}"></label><div>${quando(it, hoje)}</div></div>` : `<div class="q">${quando(it, hoje)}</div>`)
     + `<div class="cl"><button type="button" class="rc-nome" data-abrir>${esc(s.cliente || 'Sem nome')}</button><small>${quem(s)}</small></div>`
-    + `<div class="tp">${tp}${agu ? `<small>comissão toda da venda</small>` : p.valorCliente ? `<small>cliente paga ${R2(p.valorCliente)}</small>` : ''}</div>`
+    + `<div class="tp">${tp}${agu ? `<small>comissão toda da venda</small>` : p.valorCliente ? `<small>${p.clientePagou ? 'cliente pagou' : 'cliente paga'} ${R2(p.valorCliente)}</small>` : ''}</div>`
     + (tudo ? `<div class="st">${tag(b)}</div>` : '')
     + `<div class="vl"><b>${R2(valor)}</b><small>${sub}</small></div>`
-    + `<div class="ac">${a ? `<button type="button" class="btn sm" data-acao="${a.acao}">${a.rot}</button>` : ''}</div>`
+    + `<div class="ac">${a && !C.marcar ? `<button type="button" class="btn sm" data-acao="${a.acao}">${a.rot}</button>` : ''}</div>`
     + `</li>`;
 }
 
@@ -374,6 +459,7 @@ function grupos(L, hoje){
     if(it.b === 'atrasado' || it.b === 'cliente'){ const f = FAIXAS.find(x => x.id === faixaDe(it.idade)); g = add(it.b + f.id, {a: 'Até 7 dias de atraso', b: 'De 8 a 30 dias de atraso', c: 'De 31 a 60 dias de atraso', d: 'Mais de 60 dias de atraso'}[f.id], 10 - FAIXAS.indexOf(f), 'atr'); }
     else if(it.b === 'aguardando') g = it.idade > 0 ? add('ag1', 'Entrada vencida', 1, 'atr') : add('ag2', 'Entrada no prazo', 2, '');
     else if(it.b === 'recebido'){ const k = (it.dref || '0000-00').slice(0, 7); g = add('r' + k, k === '0000-00' ? 'Sem data' : mesNome(k), -Number(k.replace('-', '')), '', true); }
+    else if(it.b === 'avencer'){ const d = it.p.dataCliente; if(!d) g = add('vz', 'Sem data', 9e9, ''); else { const k = d.slice(0, 7); g = add('v' + k, `Cliente paga em ${MESES[Number(k.slice(5, 7)) - 1]} de ${k.slice(0, 4)}`, Number(k.replace('-', '')), '', true); } }
     else {
       const d = it.p.dataRecebimento;
       if(!d) g = add('zz', 'Sem data', 9e9, '');
@@ -388,9 +474,12 @@ function grupos(L, hoje){
   const lista = [...G.values()].sort((a, b) => a.ord - b.ord);
   // recebidos: os dois meses mais recentes ficam abertos
   lista.filter(g => g.k[0] === 'r').forEach((g, i) => { if(i < 2) g.fechado = false; });
+  // parcelas a vencer: os dois próximos meses ficam abertos
+  lista.filter(g => g.k[0] === 'v' && g.k !== 'vz').forEach((g, i) => { if(i < 2) g.fechado = false; });
   lista.forEach(g => {
     if(g.cls === 'atr' || g.k === 'ag1') g.itens.sort((a, b) => b.idade - a.idade || b.p.comissao - a.p.comissao);
     else if(g.k[0] === 'r') g.itens.sort((a, b) => (b.dref || '').localeCompare(a.dref || ''));
+    else if(g.k[0] === 'v') g.itens.sort((a, b) => (a.p.dataCliente || '9').localeCompare(b.p.dataCliente || '9') || (a.s.cliente || '').localeCompare(b.s.cliente || ''));
     else g.itens.sort((a, b) => (a.p.dataRecebimento || '9').localeCompare(b.p.dataRecebimento || '9') || (a.s.cliente || '').localeCompare(b.s.cliente || ''));
   });
   return lista;
@@ -404,11 +493,12 @@ function htmlLista(L, hoje, tudo){
   if(!L.length) return `<div class="rc-vazio">Nenhum lançamento nesta situação${C.q || C.corretor || C.construtora || C.tipo || C.periodo || C.faixa ? ' com esses filtros' : ''}.</div>`;
   let G;
   if(tudo){
-    G = BALDES.map(b => ({k: 't' + b.id, rot: b.rot, cls: b.id === 'atrasado' ? 'atr' : '', fechado: b.id === 'recebido' || b.id === 'areceber', itens: L.filter(it => it.b === b.id)})).filter(g => g.itens.length);
+    G = BALDES.map(b => ({k: 't' + b.id, rot: b.rot, cls: b.id === 'atrasado' ? 'atr' : '', fechado: b.id === 'recebido' || (b.id === 'avencer' && C.balde !== 'areceber'), itens: L.filter(it => it.b === b.id)})).filter(g => g.itens.length);
     G.forEach(g => g.itens.sort((a, b) => a.b === 'recebido' ? (b.dref || '').localeCompare(a.dref || '') : ATRASO.has(a.b) ? b.idade - a.idade : (a.p.dataRecebimento || '9').localeCompare(b.p.dataRecebimento || '9')));
   } else G = grupos(L, hoje);
+  C.grupos = G;
   let feitas = 0, cortou = false;
-  const cab = `<li class="rc-cab-lista rc-l" aria-hidden="true"><span>${C.balde === 'recebido' ? 'Recebido em' : C.balde === 'cliente' ? 'Venceu' : C.balde === 'aguardando' ? 'Entrada' : 'Repasse'}</span><span>Cliente</span><span>Lançamento</span>${tudo ? '<span>Situação</span>' : ''}<span style="text-align:right">Comissão</span><span></span></li>`;
+  const cab = `<li class="rc-cab-lista rc-l" aria-hidden="true"><span>${C.balde === 'recebido' ? 'Recebido em' : C.balde === 'cliente' ? 'Venceu' : C.balde === 'aguardando' ? 'Entrada' : C.balde === 'avencer' ? 'Cliente paga' : 'Repasse'}</span><span>Cliente</span><span>Lançamento</span>${tudo ? '<span>Situação</span>' : ''}<span style="text-align:right">Comissão</span><span></span></li>`;
   const corpo = G.map(g => {
     const soma = g.itens.reduce((a, it) => a + (it.b === 'aguardando' ? it.v.itens.filter(x => x.b === 'aguardando').reduce((x, y) => x + y.p.comissao, 0) : it.p.comissao), 0);
     const ab = aberto(g);
@@ -419,9 +509,12 @@ function htmlLista(L, hoje, tudo){
       if(parte.length < g.itens.length) cortou = true;
       linhas = parte.map(it => linha(it, hoje, tudo)).join('');
     }
-    return `<li class="rc-g ${g.cls}"><button type="button" data-grupo="${esc(g.k)}" aria-expanded="${ab}"><span class="seta" aria-hidden="true">▾</span>${esc(g.rot)}</button><span class="t">${pl(g.itens.length, g.itens[0].b === 'aguardando' ? 'venda' : 'lançamento', g.itens[0].b === 'aguardando' ? 'vendas' : 'lançamentos')} · <b>${R2(soma)}</b></span></li>` + linhas;
+    const gm = C.marcar ? g.itens.filter(marcavel) : [];
+    const gTodas = gm.length && gm.every(it => C.sel.has(chave(it)));
+    const gsel = gm.length ? `<button type="button" class="gsel" data-gsel="${esc(g.k)}">${gTodas ? 'Tirar as ' + gm.length : gm.length === 1 ? 'Selecionar a parcela' : 'Selecionar as ' + gm.length}</button>` : '';
+    return `<li class="rc-g ${g.cls}"><button type="button" data-grupo="${esc(g.k)}" aria-expanded="${ab}"><span class="seta" aria-hidden="true">▾</span>${esc(g.rot)}</button>${gsel}<span class="t">${pl(g.itens.length, g.itens[0].b === 'aguardando' ? 'venda' : 'lançamento', g.itens[0].b === 'aguardando' ? 'vendas' : 'lançamentos')} · <b>${R2(soma)}</b></span></li>` + linhas;
   }).join('');
-  return `<ul class="rc-lista${tudo ? ' tudo' : ''}">${cab}${corpo}</ul>` + (cortou ? `<div class="rc-mais"><button type="button" class="btn sm" data-mais>Mostrar mais lançamentos</button></div>` : '');
+  return `<ul class="rc-lista${tudo ? ' tudo' : ''}${C.marcar ? ' marcando' : ''}">${cab}${corpo}</ul>` + (cortou ? `<div class="rc-mais"><button type="button" class="btn sm" data-mais>Mostrar mais lançamentos</button></div>` : '');
 }
 
 function htmlPorCliente(L, hoje){
@@ -441,7 +534,7 @@ function htmlPorCliente(L, hoje){
   });
   if(ATRASO.has(b)) lista.sort((x, y) => y.idade - x.idade || y.soma - x.soma);
   else if(b === 'recebido') lista.sort((x, y) => y.ult.localeCompare(x.ult));
-  else if(b === 'areceber') lista.sort((x, y) => (x.prox || '9').localeCompare(y.prox || '9'));
+  else if(b === 'areceber' || b === 'pago' || b === 'avencer') lista.sort((x, y) => (x.prox || '9').localeCompare(y.prox || '9'));
   else lista.sort((x, y) => y.soma - x.soma);
   const un = BALDE[b] || {um: 'lançamento', varios: 'lançamentos'};
   const desde = (g, n) => ATRASO.has(b) && g.idade > 0 ? `<b style="color:var(--crit)">há ${pl(g.idade, 'dia', 'dias')}</b><small>${n}${n.startsWith('1 ') ? ' em atraso' : ' em atraso, a mais antiga'}</small>` : b === 'recebido' ? `<b>${dm(g.ult)}</b><small>${n}, o último</small>` : `<b>${g.prox ? dm(g.prox) : '—'}</b><small>${n}, o próximo</small>`;
@@ -468,7 +561,7 @@ function htmlPorConstrutora(L){
   lista.forEach(g => { g.soma = g.itens.reduce((a, it) => a + it.p.comissao, 0); g.idade = Math.max(...g.itens.map(it => it.idade)); g.prox = g.itens.map(it => it.p.dataRecebimento).filter(Boolean).sort()[0] || ''; g.ult = g.itens.map(it => it.dref).filter(Boolean).sort().pop() || ''; });
   lista.sort((x, y) => y.soma - x.soma);
   const maxV = Math.max(...lista.map(g => g.soma), 1);
-  const cor = {atrasado: 'var(--ra-atr)', cliente: 'var(--ra-cli)', aguardando: 'var(--ra-agu)', areceber: 'var(--ra-rec)', recebido: 'var(--ra-ok)'}[b] || 'var(--blue)';
+  const cor = {atrasado: 'var(--ra-atr)', cliente: 'var(--ra-cli)', aguardando: 'var(--ra-agu)', areceber: 'var(--ra-rec)', pago: 'var(--ra-rec)', avencer: 'var(--ra-mut)', recebido: 'var(--ra-ok)'}[b] || 'var(--blue)';
   const cab = `<li class="rc-cab-lista rc-l rc-co-l" aria-hidden="true"><span>Construtora / projeto</span><span>Lançamentos</span><span>${ATRASO.has(b) ? 'Mais antigo' : b === 'recebido' ? 'Último' : 'Próximo'}</span><span style="text-align:right">Comissão</span><span></span></li>`;
   return `<ul class="rc-lista">${cab}` + lista.map(g => `<li class="rc-l rc-co-l" data-construtora="${esc(g.nome)}" style="--c:${cor}">`
     + `<div class="cl"><b style="font-size:13.5px">${esc(g.nome)}</b><div class="tr"><i style="width:${(g.soma / maxV * 100).toFixed(1)}%"></i></div></div>`
@@ -495,7 +588,7 @@ function htmlFaixa(T){
   return `<div class="rc-faixa" role="group" aria-label="Situação dos lançamentos">` + BALDES.map(b => {
     const t = T[b.id];
     const sub = t.n ? pl(t.n, b.um, b.varios) : b.id === 'aguardando' ? 'nenhuma venda' : b.dica;
-    return `<button type="button" class="rc-b ${b.id}${t.n ? '' : ' zero'}" data-balde="${b.id}" aria-pressed="${C.balde === b.id}" title="${esc(b.rot + ': ' + b.dica)}"><span class="r">${esc(b.rot)}</span><span class="v">${R0(t.valor)}</span><span class="s">${esc(sub)}</span></button>`;
+    return `<button type="button" class="rc-b ${b.id}${t.n ? '' : ' zero'}" data-balde="${b.id}" aria-pressed="${C.balde === b.id || (C.balde === 'areceber' && ARECEBER.has(b.id))}" title="${esc(b.rot + ': ' + b.dica)}"><span class="r">${esc(b.rot)}</span><span class="v">${R0(t.valor)}</span><span class="s">${esc(sub)}</span></button>`;
   }).join('') + `<button type="button" class="rc-b tudo" data-balde="tudo" aria-pressed="${C.balde === 'tudo'}"><span class="r">Ver tudo</span></button></div>`;
 }
 
@@ -532,13 +625,14 @@ function desenhar(){
   const fa = t.instFiltro ? t.instFiltro() : null;
   if(C.filtroApp === undefined) C.filtroApp = fa;
   else if(fa !== C.filtroApp){ C.filtroApp = fa; const m = FILTRO_ANTIGO[fa]; if(m) Object.assign(C, {balde: m.balde, periodo: m.periodo || '', modo: m.modo || 'lista', faixa: null, limite: 80}); }
-  if(!C.balde) C.balde = T.atrasado.n ? 'atrasado' : T.cliente.n ? 'cliente' : 'areceber';
-  const tudo = C.balde === 'tudo';
-  let L = tudo ? F : F.filter(it => it.b === C.balde);
+  if(!C.balde) C.balde = T.atrasado.n ? 'atrasado' : T.cliente.n ? 'cliente' : 'pago';
+  if(!MARCAVEL.has(C.balde) || !podeAgir()){ C.marcar = false; C.sel.clear(); }
+  const tudo = C.balde === 'tudo' || C.balde === 'areceber';
+  let L = C.balde === 'tudo' ? F : C.balde === 'areceber' ? F.filter(it => ARECEBER.has(it.b)) : F.filter(it => it.b === C.balde);
   if(C.faixa && ATRASO.has(C.balde)) L = L.filter(it => (C.balde !== 'aguardando' || it.idade > 0) && faixaDe(it.idade) === C.faixa);
   const nL = C.balde === 'aguardando' ? new Set(L.map(it => it.s.id)).size : L.length;
   const soma = L.reduce((a, it) => a + it.p.comissao, 0), emp = L.reduce((a, it) => a + it.p.empresa, 0);
-  const rotB = tudo ? 'Todos os lançamentos' : BALDE[C.balde].rot;
+  const rotB = C.balde === 'tudo' ? 'Todos os lançamentos' : BALDE[C.balde].rot;
   const resumo = `<div class="rc-resumo" aria-live="polite"><b>${rotB}</b>${C.faixa ? ' · ' + esc(FAIXAS.find(f => f.id === C.faixa).rot) : ''}: <b>${pl(nL, C.balde === 'aguardando' ? 'venda' : 'lançamento', C.balde === 'aguardando' ? 'vendas' : 'lançamentos')}</b> · comissão <b>${R2(soma)}</b> · empresa <b>${R2(emp)}</b> · corretores <b>${R2(soma - emp)}</b></div>`;
   const modoBtn = (m, r) => `<button type="button" data-modo="${m}" aria-pressed="${C.modo === m}">${r}</button>`;
   const head = `<div class="card-head"><div><h2>Cronograma de recebimentos</h2><p>Cada lançamento está em uma situação só. Clique numa delas para ver a lista.</p></div><div class="spacer"></div>`
@@ -547,10 +641,121 @@ function desenhar(){
   const foco = document.activeElement && el.contains(document.activeElement) ? (document.activeElement.dataset.campo || null) : null;
   const cur = foco && document.activeElement.selectionStart;
   C.lista = L;
-  el.innerHTML = head + htmlFaixa(T) + htmlBarra(t) + htmlIdade(tudo ? [] : F.filter(it => it.b === C.balde)) + resumo + corpo;
+  el.innerHTML = head + htmlFaixa(T) + htmlBarra(t) + htmlIdade(tudo ? [] : F.filter(it => it.b === C.balde)) + resumo + htmlMarcar(L) + corpo + htmlSel(D);
   document.body.classList.add('rc-ativo');
   if(foco){ const f = el.querySelector(`[data-campo="${foco}"]`); if(f){ f.focus(); if(cur != null && f.setSelectionRange) try{ f.setSelectionRange(cur, cur); }catch(e){} } }
   if(C.aberto) painel(D);
+}
+
+/* ---------- marcar várias parcelas como pagas pelo cliente ---------- */
+function htmlMarcar(L){
+  if(C.modo !== 'lista' || !MARCAVEL.has(C.balde) || !podeAgir()) return '';
+  const m = L.filter(marcavel);
+  if(!m.length) return '';
+  if(!C.marcar) return `<div class="rc-marcar"><button type="button" class="btn sm" data-marcar>Marcar várias como pagas</button><small>Para a lista do mês da construtora: filtre a construtora, selecione as parcelas e confirme de uma vez.</small></div>`;
+  const todas = m.every(it => C.sel.has(chave(it)));
+  return `<div class="rc-marcar"><button type="button" class="btn sm" data-sel-todas>${todas ? 'Tirar todas' : `Selecionar as ${m.length} da lista`}</button><small>Clique nas linhas ou use "Selecionar" em cada grupo.</small></div>`;
+}
+function selecionados(D){
+  const out = [];
+  for(const it of D.itens) if(marcavel(it) && C.sel.has(chave(it))) out.push(it);
+  return out;
+}
+function htmlSel(D){
+  if(!C.marcar) return '';
+  const S = selecionados(D);
+  const soma = S.reduce((a, it) => a + it.p.comissao, 0);
+  const vendas = new Set(S.map(it => it.s.id)).size;
+  return `<div class="rc-sel" role="region" aria-label="Parcelas selecionadas"><span class="txt" aria-live="polite">${S.length ? `<b>${pl(S.length, 'parcela', 'parcelas')}</b> de ${pl(vendas, 'venda', 'vendas')} · comissão <b>${R2(soma)}</b>` : 'Nenhuma parcela selecionada'}</span><span class="sp"></span>`
+    + `<button type="button" class="btn sm ghost" data-sel-cancelar>Cancelar</button><button type="button" class="btn sm primary" data-sel-ok${S.length ? '' : ' disabled'}>Cliente pagou</button></div>`;
+}
+function alternar(k){ if(C.sel.has(k)) C.sel.delete(k); else C.sel.add(k); }
+function confirmarLote(){
+  const t = telas(); if(!t) return;
+  const D = montar(t);
+  const S = selecionados(D);
+  if(!S.length) return;
+  const hoje = D.hoje;
+  const soma = S.reduce((a, it) => a + it.p.comissao, 0);
+  const vendas = new Set(S.map(it => it.s.id)).size;
+  const fundo = document.createElement('div'); fundo.className = 'rc-fundo dlg';
+  const dlg = document.createElement('div'); dlg.className = 'rc-dlg rc'; dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'rcDlgTit');
+  dlg.innerHTML = `<h2 id="rcDlgTit">${S.length === 1 ? 'O cliente pagou esta parcela?' : `Os clientes pagaram estas ${S.length} parcelas?`}</h2>`
+    + `<p>${pl(S.length, 'parcela', 'parcelas')} de ${pl(vendas, 'venda', 'vendas')}, com ${R2(soma)} de comissão. Cada uma passa para "Cliente já pagou", com o repasse previsto pela regra da construtora, e fica no histórico da venda.</p>`
+    + `<label class="op"><input type="radio" name="rcQuando" value="venc" checked><span>Na data de vencimento de cada parcela<small>Parcela que ainda não venceu fica com a data de hoje.</small></span></label>`
+    + `<label class="op"><input type="radio" name="rcQuando" value="dia"><span>Todas na mesma data<small>Para quando a construtora mandou a lista com uma data só.</small><input type="date" data-dia value="${hoje}" max="${hoje}" aria-label="Data do pagamento"></span></label>`
+    + `<div class="bts"><button type="button" class="btn sm ghost" data-dlg-nao>Cancelar</button><button type="button" class="btn sm primary" data-dlg-sim>Confirmar ${pl(S.length, 'parcela', 'parcelas')}</button></div>`;
+  document.body.appendChild(fundo); document.body.appendChild(dlg);
+  const volta = document.activeElement;
+  const fechar = () => { document.removeEventListener('keydown', tecla, true); fundo.remove(); dlg.remove(); if(volta && volta.isConnected) volta.focus(); else { const b = document.querySelector('#raCrono [data-sel-ok]'); if(b) b.focus(); } };
+  const tecla = e => { if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); fechar(); } };
+  document.addEventListener('keydown', tecla, true);
+  fundo.addEventListener('click', fechar);
+  dlg.addEventListener('click', e => {
+    if(e.target.closest('[data-dlg-nao]')){ fechar(); return; }
+    if(e.target.closest('[data-dia]')){ const r = dlg.querySelector('input[value="dia"]'); if(r) r.checked = true; return; }
+    if(!e.target.closest('[data-dlg-sim]')) return;
+    const modo = (dlg.querySelector('input[name="rcQuando"]:checked') || {}).value;
+    const dia = (dlg.querySelector('[data-dia]') || {}).value || hoje;
+    const itens = S.map(it => ({id: it.s.id, idx: it.p.idx, data: modo === 'dia' ? dia : (it.p.dataCliente && it.p.dataCliente <= hoje ? it.p.dataCliente : hoje)}));
+    fechar();
+    const a = t.acoes;
+    if(emPrevia() || !a || typeof a.clientePagouLote !== 'function'){ aviso(`Prévia: ${pl(itens.length, 'parcela ficaria marcada como paga', 'parcelas ficariam marcadas como pagas')} pelo cliente. Nada foi gravado.`); }
+    else a.clientePagouLote(itens);
+    C.marcar = false; C.sel.clear(); desenhar();
+  });
+  requestAnimationFrame(() => { fundo.classList.add('on'); dlg.classList.add('on'); const r = dlg.querySelector('input[name="rcQuando"]:checked'); if(r) r.focus(); });
+}
+
+/* ---------- cronograma programado pela construtora (portal) ---------- */
+function cronogramaConstrutora(id){
+  const t = telas(); if(!t) return;
+  const D = montar(t); const v = D.vendas.get(id); if(!v) return;
+  const {s, sc} = v;
+  const tem = Array.isArray(s.programado) && s.programado.length;
+  // começa pelo que já está programado; sem isso, pelo cronograma calculado de hoje
+  let L = (tem ? s.programado : sc.list.map(p => ({data: p.dataRecebimento || '', valor: Math.round(p.comissao * 100) / 100}))).map(x => ({data: x.data || '', valor: x.valor}));
+  if(!L.length) L = [{data: '', valor: ''}];
+  const fundo = document.createElement('div'); fundo.className = 'rc-fundo dlg';
+  const dlg = document.createElement('div'); dlg.className = 'rc-dlg rc larga'; dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'rcProgTit');
+  document.body.appendChild(fundo); document.body.appendChild(dlg);
+  const volta = document.activeElement;
+  const ler = () => [...dlg.querySelectorAll('.rc-lin')].map(r => ({data: r.querySelector('[data-d]').value, valor: r.querySelector('[data-v]').value}));
+  const total = () => ler().reduce((a, x) => a + (parseFloat(String(x.valor).replace(',', '.')) || 0), 0);
+  const pintarTot = () => { const tot = total(); const dif = Math.abs(tot - sc.total) > 0.005; const el = dlg.querySelector('.rc-tot'); el.className = 'rc-tot' + (dif ? ' dif' : ''); el.innerHTML = `Programado <b>${R2(tot)}</b> de ${R2(sc.total)} de comissão${dif ? `. ${tot < sc.total ? 'Faltam' : 'Passou'} <b>${R2(Math.abs(sc.total - tot))}</b>.` : ''}`; };
+  const linha = (x, k) => `<div class="rc-lin"><span class="n">${k + 1}</span><input type="date" data-d value="${esc(x.data)}" aria-label="Data do pagamento ${k + 1}"><input type="number" step="0.01" min="0" data-v value="${esc(x.valor)}" aria-label="Valor do pagamento ${k + 1}" inputmode="decimal"><button type="button" class="x" data-rm aria-label="Tirar o pagamento ${k + 1}">×</button></div>`;
+  const pintar = lista => {
+    dlg.innerHTML = `<h2 id="rcProgTit">Cronograma da construtora</h2>`
+      + `<p>${esc(s.cliente || 'Venda')} · ${esc(s.construtora || '')}${s.unidade ? ' · un. ' + esc(s.unidade) : ''}. Copie do portal as datas e os valores que a construtora programou. Eles passam a valer no lugar do cálculo pela entrada e pelas parcelas, e aparecem em "Cliente já pagou".</p>`
+      + `<div class="rc-cab-lin" aria-hidden="true"><span></span><span>Data do pagamento</span><span>Valor (R$)</span><span></span></div>`
+      + `<div class="rc-linhas">${lista.map(linha).join('')}</div>`
+      + `<div style="margin-top:8px"><button type="button" class="btn sm ghost" data-add>Adicionar pagamento</button></div>`
+      + `<p class="rc-tot"></p>`
+      + `<div class="bts">${tem ? '<button type="button" class="btn sm ghost esq" data-tirar>Tirar o cronograma</button>' : ''}<button type="button" class="btn sm ghost" data-nao>Cancelar</button><button type="button" class="btn sm primary" data-sim>Salvar cronograma</button></div>`;
+    pintarTot();
+  };
+  pintar(L);
+  const fechar = () => { document.removeEventListener('keydown', tecla, true); fundo.remove(); dlg.remove(); if(volta && volta.isConnected) volta.focus(); };
+  const tecla = e => { if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); fechar(); } };
+  document.addEventListener('keydown', tecla, true);
+  fundo.addEventListener('click', fechar);
+  dlg.addEventListener('input', pintarTot);
+  dlg.addEventListener('click', e => {
+    if(e.target.closest('[data-nao]')){ fechar(); return; }
+    if(e.target.closest('[data-add]')){ const at = ler(); const ult = at[at.length - 1]; at.push({data: ult && ult.data ? (() => { const d = pd(ult.data); d.setMonth(d.getMonth() + 1); return iso(d); })() : '', valor: ult ? ult.valor : ''}); pintar(at); const ins = dlg.querySelectorAll('[data-d]'); if(ins.length) ins[ins.length - 1].focus(); return; }
+    const rm = e.target.closest('[data-rm]');
+    if(rm){ const at = ler(); const k = [...dlg.querySelectorAll('[data-rm]')].indexOf(rm); at.splice(k, 1); pintar(at.length ? at : [{data: '', valor: ''}]); return; }
+    const a = t.acoes;
+    if(e.target.closest('[data-tirar]')){ fechar(); if(emPrevia() || !a || typeof a.salvarProgramado !== 'function') aviso('Prévia: o cronograma da construtora sairia e a venda voltaria ao cálculo de sempre. Nada foi gravado.'); else a.salvarProgramado(id, []); return; }
+    if(!e.target.closest('[data-sim]')) return;
+    const lista = ler().map(x => ({data: x.data, valor: parseFloat(String(x.valor).replace(',', '.'))})).filter(x => x.data || x.valor);
+    const ruim = lista.find(x => !/^\d{4}-\d{2}-\d{2}$/.test(x.data) || !(x.valor > 0));
+    if(!lista.length || ruim){ aviso('Preencha a data e o valor de cada pagamento.'); return; }
+    fechar();
+    if(emPrevia() || !a || typeof a.salvarProgramado !== 'function') aviso(`Prévia: ${pl(lista.length, 'pagamento programado', 'pagamentos programados')} pela construtora, ${R2(lista.reduce((x, y) => x + y.valor, 0))}. Nada foi gravado.`);
+    else a.salvarProgramado(id, lista);
+  });
+  requestAnimationFrame(() => { fundo.classList.add('on'); dlg.classList.add('on'); const f = dlg.querySelector('[data-d]'); if(f) f.focus(); });
 }
 
 /* ---------- detalhe da venda ---------- */
@@ -566,6 +771,7 @@ function painel(D){
     fundo.addEventListener('click', fecharPainel);
     pn.addEventListener('click', e => {
       if(e.target.closest('[data-fechar]')){ fecharPainel(); return; }
+      if(e.target.closest('[data-prog]')){ cronogramaConstrutora(C.aberto.id); return; }
       const ac = e.target.closest('[data-acao]'); if(ac){ agir(ac.dataset.acao, C.aberto.id, ac.dataset.idx != null ? Number(ac.dataset.idx) : C.aberto.idx); return; }
       const tr = e.target.closest('tr[data-idx]'); if(tr){ C.aberto.idx = Number(tr.dataset.idx); desenhar(); }
     });
@@ -601,8 +807,10 @@ function painel(D){
     if(cb) dl.push(['Cobrança', `cobrado em ${dmy(cb.data)}${cb.quem ? ' por ' + esc(cb.quem) : ''}`]);
     foco = `<div><h3>Lançamento selecionado</h3><div class="rc-foco"><div class="l1"><b>${esc(it.rotulo)}</b>${tag(it.b)}<span class="v">${R2(p.comissao)}</span></div><dl>${dl.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>${pode ? `<div class="bts">${bts.join('')}</div>` : ''}</div></div>`;
   }
-  const curtoB = {atrasado: 'Atrasado', cliente: 'Cliente', aguardando: 'Aguarda', areceber: 'A receber', recebido: 'Recebido'};
-  const parc = `<div><h3>Todas as parcelas</h3><div class="tscroll"><table class="rc-parc"><thead><tr><th>Lançamento</th><th>Cliente</th><th>Repasse</th><th class="r">Comissão</th><th>Situação</th></tr></thead><tbody>`
+  const curtoB = {atrasado: 'Atrasado', cliente: 'Sem confirm.', aguardando: 'Aguarda', pago: 'Já pagou', avencer: 'A vencer', recebido: 'Recebido'};
+  const temProg = sc.list.some(x => x.programado);
+  const btProg = podeAgir() && !sc.distrato ? `<button type="button" class="btn sm ghost" data-prog>${temProg ? 'Editar cronograma da construtora' : 'Cronograma da construtora'}</button>` : '';
+  const parc = `<div><div class="rc-h3"><h3>Todas as parcelas</h3>${btProg}</div>${temProg ? '<p class="rc-prog-nota">Datas e valores programados pela construtora (portal).</p>' : ''}<div class="tscroll"><table class="rc-parc"><thead><tr><th>Lançamento</th><th>Cliente</th><th>Repasse</th><th class="r">Comissão</th><th>Situação</th></tr></thead><tbody>`
     + v.itens.map(x => `<tr data-idx="${x.p.idx}" class="${x === it ? 'sel' : ''}"><td>${x.p.idx === 0 && !x.p.semEntrada ? 'Entrada' : esc(x.p.tipo)}</td><td>${dm(x.p.dataCliente)}</td><td>${x.p.pago ? dm(x.p.dataPago || x.p.dataCaixa) : dm(x.p.dataRecebimento)}</td><td class="r">${R2(x.p.comissao)}</td><td><span class="rc-tag ${x.b}"><i></i>${curtoB[x.b]}</span></td></tr>`).join('')
     + `</tbody></table></div>${sc.restante > 0.005 && sc.semParcela ? `<p class="rc-resumo" style="margin-top:8px">Faltam ${R2(sc.restante)} sem parcela definida.</p>` : ''}</div>`;
   const cobr = Object.entries(s.cobrancas || {}).map(([i, c]) => ({data: c.data || '', txt: `Cobrou o cliente pela ${i === '0' ? 'entrada' : 'parcela ' + i}`, quem: c.quem || ''}));
@@ -643,13 +851,23 @@ function exportar(){
 function ligar(el){
   el.addEventListener('click', e => {
     const bb = e.target.closest('[data-balde]');
-    if(bb){ const b = bb.dataset.balde; C.balde = b; C.faixa = null; C.limite = 80; desenhar(); const f = el.querySelector(`[data-balde="${b}"]`); if(f) f.focus(); return; }
-    const md = e.target.closest('[data-modo]'); if(md){ C.modo = md.dataset.modo; C.limite = 80; desenhar(); const f = el.querySelector(`[data-modo="${C.modo}"]`); if(f) f.focus(); return; }
+    if(bb){ const b = bb.dataset.balde; C.balde = b; C.faixa = null; C.limite = 80; C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector(`[data-balde="${b}"]`); if(f) f.focus(); return; }
+    const md = e.target.closest('[data-modo]'); if(md){ C.modo = md.dataset.modo; C.limite = 80; C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector(`[data-modo="${C.modo}"]`); if(f) f.focus(); return; }
     const fx = e.target.closest('.rc-idade [data-f]'); if(fx){ C.faixa = C.faixa === fx.dataset.f ? null : fx.dataset.f; C.limite = 80; desenhar(); const f = el.querySelector(`.rc-idade [data-f="${fx.dataset.f}"]`); if(f) f.focus(); return; }
     const gr = e.target.closest('[data-grupo]');
     if(gr){ const k = gr.dataset.grupo; const ab = gr.getAttribute('aria-expanded') === 'true'; if(ab){ C.abertos.delete(k); C.fechados.add(k); } else { C.fechados.delete(k); C.abertos.add(k); } desenhar(); const f = el.querySelector(`[data-grupo="${CSS.escape(k)}"]`); if(f) f.focus(); return; }
     if(e.target.closest('[data-mais]')){ C.limite += 80; desenhar(); return; }
     if(e.target.closest('[data-limpar]')){ Object.assign(C, {q: '', corretor: '', construtora: '', tipo: '', periodo: '', de: '', ate: '', faixa: null, limite: 80}); desenhar(); return; }
+    if(e.target.closest('[data-marcar]')){ C.marcar = true; C.sel.clear(); desenhar(); const f = el.querySelector('[data-sel-todas]'); if(f) f.focus(); return; }
+    if(e.target.closest('[data-sel-cancelar]')){ C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector('[data-marcar]'); if(f) f.focus(); return; }
+    if(e.target.closest('[data-sel-ok]')){ confirmarLote(); return; }
+    if(e.target.closest('[data-sel-todas]')){ const m = (C.lista || []).filter(marcavel); const todas = m.every(it => C.sel.has(chave(it))); m.forEach(it => todas ? C.sel.delete(chave(it)) : C.sel.add(chave(it))); desenhar(); const f = el.querySelector('[data-sel-todas]'); if(f) f.focus(); return; }
+    const gs = e.target.closest('[data-gsel]');
+    if(gs){ const g = (C.grupos || []).find(x => x.k === gs.dataset.gsel); if(g){ const m = g.itens.filter(marcavel); const todas = m.every(it => C.sel.has(chave(it))); m.forEach(it => todas ? C.sel.delete(chave(it)) : C.sel.add(chave(it))); C.fechados.delete(g.k); C.abertos.add(g.k); } desenhar(); const f = el.querySelector(`[data-gsel="${CSS.escape(gs.dataset.gsel)}"]`); if(f) f.focus(); return; }
+    const lck = e.target.closest('li[data-ck]');
+    // o clique no rótulo da caixa chega de novo como clique na própria caixa: conta uma vez só
+    if(lck && C.marcar && e.target.closest('label.rc-ck') && e.target.tagName !== 'INPUT') return;
+    if(lck && C.marcar && !e.target.closest('[data-abrir]')){ alternar(lck.dataset.id + '|' + lck.dataset.idx); const foco = e.target.closest('input[data-ck]') ? lck.dataset.id + '|' + lck.dataset.idx : null; desenhar(); if(foco){ const li2 = [...el.querySelectorAll('li[data-ck]')].find(x => x.dataset.id + '|' + x.dataset.idx === foco); const i2 = li2 && li2.querySelector('input[data-ck]'); if(i2) i2.focus(); } return; }
     const vc = e.target.closest('[data-verco]'); if(vc){ const li = vc.closest('[data-construtora]'); C.construtora = li.dataset.construtora; C.modo = 'lista'; desenhar(); return; }
     const li = e.target.closest('li[data-id]');
     const ac = e.target.closest('[data-acao]');

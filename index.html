@@ -641,11 +641,11 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=33f3c12c19"></script>
+<script src="radar-app.js?v=59374a4465"></script>
 <script src="caixa.js?v=3ef95b65a4"></script>
 <script src="lucro.js?v=2350dac01e"></script>
-<script src="painel.js?v=0440e6176e"></script>
-<script src="cronograma.js?v=12450fdf60"></script>
+<script src="painel.js?v=3ecb1d2efa"></script>
+<script src="cronograma.js?v=107ffe5ac9"></script>
 <script>
 (function(){
 'use strict';
@@ -726,6 +726,14 @@ function schedule(s){
   }
   const semEntrada = entrada<=0 && !s.integral && parcela>0 && list.length>1;
   if(semEntrada){ list.forEach(p=>{ p.tipo = `Parcela ${p.idx+1}`; p.semEntrada=true; }); }
+  // cronograma programado pela construtora (portal): datas e valores exatos, no lugar da entrada e das parcelas calculadas
+  const prog = Array.isArray(s.programado) ? s.programado.filter(x=>x&&x.data&&Number(x.valor)>0) : [];
+  if(prog.length){
+    list.length = 0;
+    const comEntrada = entrada>0 || !!s.integral;
+    prog.forEach((x,k)=>{ const c = realV(k)!=null ? realV(k) : Number(x.valor); list.push({idx:k, tipo: comEntrada ? (k===0 ? 'Entrada' : `Parcela ${k}`) : `Parcela ${k+1}`, dataCliente:s.dataEntrada||'', valorCliente: k===0 ? entrada : 0, comissao:c, dataRecebimento:String(x.data), programado:true, semEntrada:!comEntrada, ...split(c)}); });
+    rest = total - list.reduce((a,p)=>a+p.comissao,0);
+  }
   const rec = s.recebimentos||{};
   if(distrato){ // contrato cancelado: só o que já foi recebido permanece (comissão não é devolvida)
     const kept = list.filter(p=>rec[p.idx]&&rec[p.idx].pago);
@@ -742,7 +750,7 @@ function schedule(s){
     else if(hasDate){ anchor = list[0].dataRecebimento; }
     let first = true; const manual = s.datasPrevistas||{}; const cpg = s.clientePagou||{};
     list.forEach(p=>{
-      if(p.idx===0 || (rec[p.idx]&&rec[p.idx].pago)) return;
+      if(p.idx===0 || p.programado || (rec[p.idx]&&rec[p.idx].pago)) return;
       let dc;
       if(cpg[p.idx]&&cpg[p.idx].pago&&cpg[p.idx].data){ dc = cpg[p.idx].data; p.estimada=false; p.confirmada=true; } // cliente confirmou o pagamento nesta data
       else if(manual[p.idx]){ dc = manual[p.idx]; p.estimada=false; p.manual=true; }
@@ -759,8 +767,8 @@ function schedule(s){
     const r = rec[p.idx];
     p.pago = !!(r && r.pago);
     const cpi = cpAll[p.idx];
-    p.clientePagou = p.idx===0 ? s.entradaPaga!==false : !!(cpi && cpi.pago);
-    p.dataClientePagou = p.idx===0 ? (s.entradaPaga!==false ? (s.dataEntrada||null) : null) : (cpi && cpi.data || null);
+    p.clientePagou = (p.idx===0 || p.programado) ? s.entradaPaga!==false : !!(cpi && cpi.pago);
+    p.dataClientePagou = (p.idx===0 || p.programado) ? (s.entradaPaga!==false ? (s.dataEntrada||null) : null) : (cpi && cpi.data || null);
     p.dataPago = r && r.dataPago || null;
     p.dataCaixa = p.dataPago || p.dataRecebimento || p.dataCliente || '';
     const rp = reps ? reps[p.idx] : null;
@@ -774,7 +782,7 @@ function schedule(s){
     else if(p.dataRecebimento>=wMon && p.dataRecebimento<=wSun) p.status='semana';
     else p.status='pendente';
   });
-  return {total, list, restante: Math.max(rest,0), semParcela: parcela<=0 && rest>0.005, ceo, distrato:false, semData:!hasDate,
+  return {total, list, restante: Math.max(rest,0), semParcela: (prog.length>0 || parcela<=0) && rest>0.005, ceo, distrato:false, semData:!hasDate,
     recebido: list.filter(p=>p.pago).reduce((a,p)=>a+p.comissao,0),
     pendente: list.filter(p=>!p.pago).reduce((a,p)=>a+p.comissao,0),
     atrasados: list.filter(p=>p.status==='atrasado').length,
@@ -2034,6 +2042,33 @@ const acoesRecebimentos = {
   pode: () => !readOnly && !brokerMode,
   recebido(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); const sug=(p&&p.dataRecebimento&&p.dataRecebimento<=today)?p.dataRecebimento:today; askDate('Registrar recebimento', sug, (d,val,ck)=>togglePaid(id,Number(i),true,d,val,ck), {valor:p?p.comissao:0, check:(p&&p.corretor>0)?{label:`Repasse de ${fmt2(p.corretor)} ao corretor ${esc(s.corretor)} feito na mesma data`,checked:true}:null}); },
   desfazer(id, i){ togglePaid(id,Number(i),false); },
+  // marcar várias: uma gravação por venda, com todas as parcelas dela juntas
+  clientePagouLote(itens){ if(readOnly){ toast('Somente leitura'); return; }
+    const porVenda=new Map(); (itens||[]).forEach(x=>{ if(!x||!x.id) return; if(!porVenda.has(x.id)) porVenda.set(x.id,[]); porVenda.get(x.id).push(x); });
+    (async()=>{ let ok=0, falha=0;
+      for(const [id,xs] of porVenda){ const s=sales.find(v=>v.id===id); if(!s){ falha+=xs.length; continue; }
+        const sc=schedule(s); const cp={...(s.clientePagou||{})};
+        xs.forEach(x=>{ cp[Number(x.idx)]={pago:true, data:x.data||today}; });
+        const desc=xs.map(x=>{ const p=sc.list.find(q=>q.idx===Number(x.idx)); return `${p?p.tipo.toLowerCase():'parcela '+x.idx} em ${fmtD(x.data||today)}`; }).join(', ');
+        const hist=logHist(s, `confirmou que o cliente pagou ${desc} (marcadas juntas)`);
+        const patch={clientePagou:cp, historico:hist};
+        if(db){ try{ await db.collection('vendas').doc(id).update(patch); ok+=xs.length; }catch(e){ falha+=xs.length; } }
+        else { const i=sales.findIndex(v=>v.id===id); sales[i]={...s,...patch}; ok+=xs.length; }
+      }
+      if(!db){ saveLocal(); render(); }
+      toast(falha ? `${ok} confirmadas · ${falha} não foram salvas` : (ok===1 ? 'Pagamento do cliente confirmado' : `${ok} pagamentos de cliente confirmados`));
+    })();
+  },
+  // cronograma programado pela construtora (portal): datas e valores exatos; lista vazia volta ao cálculo de sempre
+  salvarProgramado(id, lista){ if(readOnly){ toast('Somente leitura'); return; } const s=sales.find(v=>v.id===id); if(!s) return;
+    const L=(lista||[]).filter(x=>x&&/^\d{4}-\d{2}-\d{2}$/.test(String(x.data||''))&&Number(x.valor)>0).map(x=>({data:String(x.data), valor:Math.round(Number(x.valor)*100)/100})).sort((a,b)=>a.data.localeCompare(b.data));
+    const tot=L.reduce((a,x)=>a+x.valor,0);
+    const hist=logHist(s, L.length?`registrou o cronograma da construtora: ${L.length===1?'1 pagamento':L.length+' pagamentos'} de ${fmtD(L[0].data)} a ${fmtD(L[L.length-1].data)}, ${fmt2(tot)}`:'tirou o cronograma da construtora (volta ao cálculo pela entrada e pelas parcelas)');
+    const patch={programado:L.length?L:null, historico:hist};
+    (async()=>{ const msg=L.length?'Cronograma da construtora salvo':'Cronograma tirado';
+      if(db){ try{ await db.collection('vendas').doc(id).update(patch); toast(msg); }catch(e){ toast('Não foi possível salvar'); } }
+      else { const i=sales.findIndex(v=>v.id===id); sales[i]={...s,...patch}; saveLocal(); render(); toast(msg); } })();
+  },
   clientePagou(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); const sug=(p&&p.dataCliente&&p.dataCliente<=today)?p.dataCliente:today; askDate('Cliente pagou a parcela', sug, d=>setClientePagou(id,Number(i),true,d), {label:'Data em que o cliente pagou',hint:`${p?p.tipo:''} de ${fmt(p?p.valorCliente:0)} · ${esc(s.construtora)}. A comissão de ${fmt2(p?p.comissao:0)} passa a ser prevista para a data de repasse da construtora a partir desse dia. Quando a construtora pagar, clique em "Recebido".`}); },
   entradaPaga(id){ const s=sales.find(x=>x.id===id); if(!s) return; const c0=schedule(s).list[0]; askDate('Cliente pagou a entrada', today, d=>confirmEntrada(id,d), {label:'Data em que o cliente pagou a entrada', hint:`Entrada de ${fmt(s.entrada||0)} · ${esc(s.construtora)}. A comissão de ${fmt2(c0?c0.comissao:0)} passa a ser prevista para ${fmtD(repasseDate(today,s.construtora))} (ajusta conforme a data informada). Depois, quando a construtora pagar, clique em "Recebido".`}); },
   adiar(id, i){ const s=sales.find(x=>x.id===id); if(!s) return; const p=schedule(s).list.find(x=>x.idx===Number(i)); askDate('Cliente não pagou · nova previsão', p&&p.dataCliente?addMonths(p.dataCliente,1):today, (d,val)=>setPrevista(id,Number(i),d,val), {future:true,label:'Nova data prevista para o cliente pagar',hint:'A parcela sai de "Cliente não pagou" e volta para o cronograma na nova data. Fica registrado no histórico.',valor:p?p.comissao:0,valorLabel:'Valor previsto da comissão (R$)',valorHint:'Mantenha, salvo se a construtora reprogramou o valor.'}); },

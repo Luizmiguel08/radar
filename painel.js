@@ -2,7 +2,7 @@
    1. O caminho do dinheiro do período: Vendemos (VGV) → Ganhamos (comissão e lucro da empresa), pela data da venda;
       Recebemos (comissão que entrou na conta) → Sobrou (resultado operacional), pelo extrato da tela Caixa.
       Cada número comparado com o mesmo trecho do período anterior (no mês corrente, do dia 1 até hoje).
-   2. Está travado: o que já devia ter entrado e não entrou (construtora atrasada, cliente que não pagou a parcela,
+   2. Está travado: o que já devia ter entrado e não entrou (construtora atrasada, parcela do cliente sem confirmação,
       entrada vencida), com a dívida mais antiga.
    3. Vamos receber (próximos 30 dias e a próxima sexta) e Caixa (disponível agora e retiradas dos sócios no ano).
    4. Uma linha de avisos com o que pede ação hoje.
@@ -309,7 +309,7 @@ function desenhar(){
     + `<div class="tot"><b>${tot ? curto(tot) : 'Nada'}</b><span>${tot ? 'de comissão que já devia ter entrado' : 'Nenhuma comissão atrasada agora.'}</span></div>`
     + `<div class="rp-ls">`
     + li('atrasado', 'var(--rp-atr)', 'Construtora não repassou', A.atr.v, A.atr.n, `${pl(A.atr.n, 'lançamento', 'lançamentos')} · ${pl(A.atr.cons, 'construtora', 'construtoras')} · até ${pl(A.atr.dias, 'dia', 'dias')}`)
-    + li('cliente', 'var(--rp-cli)', 'Cliente não pagou a parcela', A.cli.v, A.cli.n, `${pl(A.cli.n, 'parcela', 'parcelas')} · ${pl(A.cli.clientes, 'cliente', 'clientes')} · até ${pl(A.cli.dias, 'dia', 'dias')}`)
+    + li('cliente', 'var(--rp-cli)', 'Parcela sem confirmação', A.cli.v, A.cli.n, `${pl(A.cli.n, 'parcela', 'parcelas')} · ${pl(A.cli.clientes, 'cliente', 'clientes')} · até ${pl(A.cli.dias, 'dia', 'dias')}`)
     + li('aguardando', 'var(--rp-agu)', 'Entrada vencida', A.ent.v, A.ent.n, `${pl(A.ent.n, 'venda', 'vendas')} · ${curto(A.ent.total)} de comissão esperando a entrada`)
     + `</div>`
     + (velTxt ? `<div class="rp-velho">${velTxt}</div>` : '')
