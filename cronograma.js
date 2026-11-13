@@ -8,6 +8,8 @@
    - No detalhe da venda, "Cronograma da construtora" grava as datas e os valores que a construtora programou
      no portal (campo programado da venda); o motor usa esse cronograma no lugar da entrada e das parcelas.
    - Período só pelo "Período rápido" (com datas livres dentro dele).
+   - Corretores e construtoras: vários de uma vez (caixas de marcar com busca e a conta de cada um na situação
+     aberta), com as mesmas classes .msel do filtro das Vendas cadastradas (CSS no index.html).
    - Três jeitos de ver: lista, por cliente e por construtora.
    - Nos atrasos, a idade da dívida em faixas (até 7, 8 a 30, 31 a 60 e mais de 60 dias).
    - Clicar no cliente abre a venda ao lado: todas as parcelas, cobranças, histórico e as ações.
@@ -97,7 +99,10 @@ function intervalo(p, hoje, de, ate){
 }
 
 /* ---------- estado da tela ---------- */
-const C = {balde: null, modo: 'lista', faixa: null, q: '', corretor: '', construtora: '', tipo: '', periodo: '', de: '', ate: '', aberto: null, limite: 80, abertos: new Set(), fechados: new Set(), marcar: false, sel: new Set()};
+// corretores: nomes marcados; construtoras: nomes marcados já normalizados (nz); msel: a lista aberta ('corretor' ou 'construtora')
+const C = {balde: null, modo: 'lista', faixa: null, q: '', corretores: new Set(), construtoras: new Set(), msel: null, mselQ: '', mselAbrindo: false, tipo: '', periodo: '', de: '', ate: '', aberto: null, limite: 80, abertos: new Set(), fechados: new Set(), marcar: false, sel: new Set()};
+const algumFiltro = () => !!(C.q || C.corretores.size || C.construtoras.size || C.tipo || C.periodo);
+const limparFiltros = () => { Object.assign(C, {q: '', tipo: '', periodo: '', de: '', ate: '', faixa: null, limite: 80, msel: null, mselQ: ''}); C.corretores.clear(); C.construtoras.clear(); };
 
 /* ---------- dados ---------- */
 function montar(t){
@@ -123,15 +128,16 @@ function montar(t){
   }
   return {hoje, itens, vendas};
 }
-function filtrar(D){
+// ignorar: 'corretor' ou 'construtora' deixa esse filtro de fora (para a conta de cada um na lista do filtro)
+function filtrar(D, ignorar){
   const [de, ate] = intervalo(C.periodo, D.hoje, C.de, C.ate);
   const q = C.q.trim(); const qn = nz(q);
   const cmp = q.match(/^([<>])\s*([\d.,]+)$/); const cmpV = cmp ? parseFloat(cmp[2].replace(/\./g, '').replace(',', '.')) : null;
   const qnum = parseFloat(q.replace(/\./g, '').replace(',', '.'));
   return D.itens.filter(it => {
     const {p, s} = it;
-    if(C.corretor && s.corretor !== C.corretor) return false;
-    if(C.construtora && nz(s.construtora) !== nz(C.construtora)) return false;
+    if(ignorar !== 'corretor' && C.corretores.size && !C.corretores.has(s.corretor)) return false;
+    if(ignorar !== 'construtora' && C.construtoras.size && !C.construtoras.has(nz(s.construtora))) return false;
     if(C.tipo === 'entrada' && !(p.idx === 0 && !p.semEntrada)) return false;
     if(C.tipo === 'parcela' && (p.idx === 0 && !p.semEntrada)) return false;
     if(de && !(it.dref && it.dref >= de)) return false;
@@ -189,9 +195,12 @@ const CSS_CRONO = `
 .rc-b.tudo::before{display:none}
 .rc-b.tudo .r{color:var(--blue-ink)}
 .rc-barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.rc-barra input[type=search]{flex:1 1 240px;min-width:0}
-.rc-barra select,.rc-barra input{min-height:36px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 10px}
+/* só os campos da própria barra: as listas de corretores e construtoras têm busca e caixas de marcar dentro */
+.rc-barra > input[type=search]{flex:1 1 240px;min-width:0}
+.rc-barra > select,.rc-barra > input,.rc-barra .rc-datas input{min-height:36px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 10px}
 .rc-barra .rc-datas{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.rc-barra .msel{min-width:0}
+.rc-barra .msel-btn{min-height:36px}
 .rc-idade{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .rc-idade button{border:1px solid var(--line-strong);background:var(--surface);border-radius:10px;padding:6px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:150px;color:var(--ink);min-height:44px}
 .rc-idade button .r{font-size:12px;font-weight:700;color:var(--ra-mut)}
@@ -301,10 +310,11 @@ body.rc-ativo #sec-installments > :not(#raCrono){display:none!important}
   .rc-b.tudo{flex-direction:row;gap:8px;justify-content:center;border-bottom:0;min-height:44px}
   .rc-b.recebido{border-bottom:0}
   .rc-barra{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .rc-barra input[type=search]{grid-column:1 / -1}
-  .rc-barra select,.rc-barra input{width:100%;min-width:0;min-height:44px}
+  .rc-barra > input[type=search]{grid-column:1 / -1}
+  .rc-barra > select,.rc-barra > input,.rc-barra .rc-datas input{width:100%;min-width:0;min-height:44px}
   .rc-barra .rc-datas{grid-column:1 / -1}
   .rc-barra .rc-limpar{grid-column:1 / -1}
+  .rc-barra .msel-btn{width:100%;max-width:none;min-height:44px;justify-content:space-between}
   .rc-idade{display:grid;grid-template-columns:1fr 1fr}
   .rc-idade button{min-width:0}
   .rc-cab-lista{display:none}
@@ -490,7 +500,7 @@ function htmlLista(L, hoje, tudo){
   // aguardando: uma linha por venda (a entrada); o resto das parcelas vai junto
   const vistos = new Set();
   L = L.filter(it => { if(it.b !== 'aguardando') return true; if(vistos.has(it.s.id)) return false; vistos.add(it.s.id); return true; });
-  if(!L.length) return `<div class="rc-vazio">Nenhum lançamento nesta situação${C.q || C.corretor || C.construtora || C.tipo || C.periodo || C.faixa ? ' com esses filtros' : ''}.</div>`;
+  if(!L.length) return `<div class="rc-vazio">Nenhum lançamento nesta situação${algumFiltro() || C.faixa ? ' com esses filtros' : ''}.</div>`;
   let G;
   if(tudo){
     G = BALDES.map(b => ({k: 't' + b.id, rot: b.rot, cls: b.id === 'atrasado' ? 'atr' : '', fechado: b.id === 'recebido' || (b.id === 'avencer' && C.balde !== 'areceber'), itens: L.filter(it => it.b === b.id)})).filter(g => g.itens.length);
@@ -592,16 +602,71 @@ function htmlFaixa(T){
   }).join('') + `<button type="button" class="rc-b tudo" data-balde="tudo" aria-pressed="${C.balde === 'tudo'}"><span class="r">Ver tudo</span></button></div>`;
 }
 
-function htmlBarra(t){
+/* ---------- corretores e construtoras: vários de uma vez ---------- */
+const CHEVRON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+// a situação aberta (e a faixa de atraso), como na lista
+function daSituacao(F){
+  let L = C.balde === 'tudo' ? F : C.balde === 'areceber' ? F.filter(it => ARECEBER.has(it.b)) : F.filter(it => it.b === C.balde);
+  if(C.faixa && ATRASO.has(C.balde)) L = L.filter(it => (C.balde !== 'aguardando' || it.idade > 0) && faixaDe(it.idade) === C.faixa);
+  return L;
+}
+// quantos lançamentos (em Aguardando entrada, quantas vendas) cada corretor ou construtora tem na situação aberta, com os outros filtros
+function contaPor(D, campo){
+  const m = new Map(), vistos = new Set(), porVenda = C.balde === 'aguardando';
+  for(const it of daSituacao(filtrar(D, campo))){
+    const k = campo === 'corretor' ? it.s.corretor : nz(it.s.construtora);
+    if(porVenda){ const u = k + '|' + it.s.id; if(vistos.has(u)) continue; vistos.add(u); }
+    m.set(k, (m.get(k) || 0) + 1);
+  }
+  return m;
+}
+function htmlMsel(campo, ops, D){
+  const sel = campo === 'corretor' ? C.corretores : C.construtoras;
+  const eh = campo === 'corretor';
+  const um = eh ? 'corretor' : 'construtora';
+  const k = sel.size;
+  const rot = !k ? (eh ? 'Todos os corretores' : 'Todas as construtoras') : k === 1 ? (ops.find(o => sel.has(o.v)) || {rot: [...sel][0]}).rot : `${k} ${eh ? 'corretores' : 'construtoras'}`;
+  const aberto = C.msel === campo;
+  let h = `<div class="msel" data-msel="${campo}"><button type="button" class="msel-btn${k ? ' on' : ''}" data-msel-btn="${campo}" aria-haspopup="true" aria-expanded="${aberto}" aria-label="${esc((eh ? 'Corretor: ' : 'Construtora: ') + rot)}"${k > 1 ? ` title="${esc(ops.filter(o => sel.has(o.v)).map(o => o.rot).join(', '))}"` : ''}><span>${esc(rot)}</span>${CHEVRON}</button>`;
+  if(aberto){
+    const conta = contaPor(D, campo);
+    const qn = nz(C.mselQ);
+    const vis = o => !qn || nz(o.rot).includes(qn);
+    const [u1, u2] = C.balde === 'aguardando' ? ['venda', 'vendas'] : ['lançamento', 'lançamentos'];
+    h += `<div class="msel-pop" role="group" aria-label="${eh ? 'Corretores' : 'Construtoras'}">`
+      + `<input type="search" data-msel-q value="${esc(C.mselQ)}" placeholder="Procurar ${um}…" aria-label="Procurar ${um}" autocomplete="off">`
+      + `<div class="msel-acoes"><button type="button" data-msel-acao="marcar">Marcar as da lista</button><button type="button" data-msel-acao="limpar">Limpar</button></div>`
+      + `<div class="msel-lista">${ops.map(o => { const n = conta.get(o.v) || 0; return `<label class="msel-op${n ? '' : ' zero'}" data-nome="${esc(o.rot)}"${vis(o) ? '' : ' hidden'}><input type="checkbox" data-msel-ck="${esc(o.v)}"${sel.has(o.v) ? ' checked' : ''}><span class="n">${esc(o.rot)}</span><span class="c tn" aria-label="${n} ${n === 1 ? u1 : u2}">${n}</span></label>`; }).join('')}`
+      + `<div class="msel-vazio"${ops.some(vis) ? ' hidden' : ''}>${eh ? 'Nenhum corretor' : 'Nenhuma construtora'} com esse nome.</div></div>`
+      + `<div class="msel-fim"><button type="button" class="btn sm primary" data-msel-acao="pronto">Pronto</button></div></div>`;
+  }
+  return h + `</div>`;
+}
+// fecha a lista aberta sem redesenhar o cartão (clique ou foco fora dela)
+function fecharMsel(el, foco){
+  if(!C.msel) return;
+  const box = el.querySelector(`.msel[data-msel="${C.msel}"]`);
+  C.msel = null; C.mselQ = '';
+  if(!box) return;
+  const pop = box.querySelector('.msel-pop'); if(pop) pop.remove();
+  const b = box.querySelector('[data-msel-btn]'); if(b){ b.setAttribute('aria-expanded', 'false'); if(foco) b.focus(); }
+}
+
+function htmlBarra(t, D){
   const cfg = t.config() || {};
-  const corr = (cfg.corretores || []).map(c => c.nome).filter(Boolean);
-  const cons = [...new Set([...(cfg.construtoras || []).map(c => c.nome), ...(t.vendas() || []).map(s => s.construtora)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const vendas = t.vendas() || [];
+  // corretores na ordem do cadastro e, depois, quem só aparece em vendas
+  const corr = [...new Set([...(cfg.corretores || []).map(c => c.nome), ...vendas.map(s => s.corretor)].filter(Boolean))].map(n => ({v: n, rot: n}));
+  // construtoras sem repetir grafias (a chave é o nome sem acento e sem maiúscula)
+  const consM = new Map();
+  [...(cfg.construtoras || []).map(c => c.nome), ...vendas.map(s => s.construtora)].filter(Boolean).forEach(n => { const k = nz(n); if(k && !consM.has(k)) consM.set(k, n); });
+  const cons = [...consM].map(([v, rot]) => ({v, rot})).sort((a, b) => a.rot.localeCompare(b.rot, 'pt-BR', {sensitivity: 'base'}));
   const op = (v, r, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(r)}</option>`;
-  const algum = C.q || C.corretor || C.construtora || C.tipo || C.periodo;
+  const algum = algumFiltro();
   return `<div class="rc-barra">`
     + `<input type="search" data-campo="q" value="${esc(C.q)}" placeholder="Buscar cliente, corretor, unidade, data ou valor" aria-label="Buscar lançamentos">`
-    + `<select data-campo="corretor" aria-label="Corretor">${op('', 'Todos os corretores', !C.corretor)}${corr.map(n => op(n, n, n === C.corretor)).join('')}</select>`
-    + `<select data-campo="construtora" aria-label="Construtora">${op('', 'Todas as construtoras', !C.construtora)}${cons.map(n => op(n, n, nz(n) === nz(C.construtora))).join('')}</select>`
+    + htmlMsel('corretor', corr, D)
+    + htmlMsel('construtora', cons, D)
     + `<select data-campo="tipo" aria-label="Entrada ou parcelas">${op('', 'Entrada e parcelas', !C.tipo)}${op('entrada', 'Só entradas', C.tipo === 'entrada')}${op('parcela', 'Só parcelas', C.tipo === 'parcela')}</select>`
     + `<select data-campo="periodo" aria-label="Período">${PERIODOS.map(([v, r]) => op(v, r, v === C.periodo)).join('')}</select>`
     + (C.periodo === 'datas' ? `<span class="rc-datas">de <input type="date" data-campo="de" value="${esc(C.de)}" aria-label="De"> até <input type="date" data-campo="ate" value="${esc(C.ate)}" aria-label="Até"></span>` : '')
@@ -628,8 +693,7 @@ function desenhar(){
   if(!C.balde) C.balde = T.atrasado.n ? 'atrasado' : T.cliente.n ? 'cliente' : 'pago';
   if(!MARCAVEL.has(C.balde) || !podeAgir()){ C.marcar = false; C.sel.clear(); }
   const tudo = C.balde === 'tudo' || C.balde === 'areceber';
-  let L = C.balde === 'tudo' ? F : C.balde === 'areceber' ? F.filter(it => ARECEBER.has(it.b)) : F.filter(it => it.b === C.balde);
-  if(C.faixa && ATRASO.has(C.balde)) L = L.filter(it => (C.balde !== 'aguardando' || it.idade > 0) && faixaDe(it.idade) === C.faixa);
+  const L = daSituacao(F);
   const nL = C.balde === 'aguardando' ? new Set(L.map(it => it.s.id)).size : L.length;
   const soma = L.reduce((a, it) => a + it.p.comissao, 0), emp = L.reduce((a, it) => a + it.p.empresa, 0);
   const rotB = C.balde === 'tudo' ? 'Todos os lançamentos' : BALDE[C.balde].rot;
@@ -640,10 +704,35 @@ function desenhar(){
   const corpo = C.modo === 'cliente' ? htmlPorCliente(L, D.hoje) : C.modo === 'construtora' ? htmlPorConstrutora(L) : htmlLista(L, D.hoje, tudo);
   const foco = document.activeElement && el.contains(document.activeElement) ? (document.activeElement.dataset.campo || null) : null;
   const cur = foco && document.activeElement.selectionStart;
+  // a lista de corretores ou construtoras aberta continua aberta depois de redesenhar: guarda o foco e a rolagem dela
+  const ae = document.activeElement && el.contains(document.activeElement) ? document.activeElement : null;
+  const mFoco = C.msel && ae ? (ae.matches('[data-msel-q]') ? {q: ae.selectionStart} : ae.dataset.mselCk != null ? {ck: ae.dataset.mselCk} : ae.dataset.mselAcao ? {acao: ae.dataset.mselAcao} : null) : null;
+  const mLista = C.msel ? el.querySelector('.msel-pop .msel-lista') : null;
+  const mRola = mLista ? mLista.scrollTop : 0;
   C.lista = L;
-  el.innerHTML = head + htmlFaixa(T) + htmlBarra(t) + htmlIdade(tudo ? [] : F.filter(it => it.b === C.balde)) + resumo + htmlMarcar(L) + corpo + htmlSel(D);
+  el.innerHTML = head + htmlFaixa(T) + htmlBarra(t, D) + htmlIdade(tudo ? [] : F.filter(it => it.b === C.balde)) + resumo + htmlMarcar(L) + corpo + htmlSel(D);
   document.body.classList.add('rc-ativo');
   if(foco){ const f = el.querySelector(`[data-campo="${foco}"]`); if(f){ f.focus(); if(cur != null && f.setSelectionRange) try{ f.setSelectionRange(cur, cur); }catch(e){} } }
+  if(C.msel){
+    const pop = el.querySelector('.msel-pop');
+    if(pop){
+      pop.style.left = '0px';
+      const r = pop.getBoundingClientRect(), lim = document.documentElement.clientWidth - 16;
+      if(r.right > lim) pop.style.left = Math.round(lim - r.right) + 'px';
+      const lista = pop.querySelector('.msel-lista'); if(lista) lista.scrollTop = mRola;
+      if(C.mselAbrindo){
+        // no celular o foco vai para a lista (sem abrir o teclado); no computador, para a busca
+        if(window.matchMedia && matchMedia('(pointer: coarse)').matches){ pop.tabIndex = -1; pop.focus({preventScroll: true}); }
+        else { const q = pop.querySelector('[data-msel-q]'); if(q) q.focus({preventScroll: true}); }
+        pop.scrollIntoView({block: 'nearest'});
+      } else if(mFoco){
+        if(mFoco.q != null){ const f = pop.querySelector('[data-msel-q]'); if(f){ f.focus({preventScroll: true}); try{ f.setSelectionRange(mFoco.q, mFoco.q); }catch(e){} } }
+        else if(mFoco.ck != null){ const f = [...pop.querySelectorAll('[data-msel-ck]')].find(x => x.dataset.mselCk === mFoco.ck); if(f) f.focus({preventScroll: true}); }
+        else if(mFoco.acao){ const f = pop.querySelector(`[data-msel-acao="${mFoco.acao}"]`); if(f) f.focus({preventScroll: true}); }
+      }
+    }
+  }
+  C.mselAbrindo = false;
   if(C.aberto) painel(D);
 }
 
@@ -850,6 +939,17 @@ function exportar(){
 /* ---------- eventos (um ouvinte só, no cartão) ---------- */
 function ligar(el){
   el.addEventListener('click', e => {
+    // corretores e construtoras: abrir e fechar a lista, marcar as da lista, limpar e pronto
+    const mb = e.target.closest('[data-msel-btn]');
+    if(mb){ const c = mb.dataset.mselBtn; if(C.msel === c) fecharMsel(el, true); else { C.msel = c; C.mselQ = ''; C.mselAbrindo = true; desenhar(); } return; }
+    const ma = e.target.closest('[data-msel-acao]');
+    if(ma){
+      const a = ma.dataset.mselAcao, sel = C.msel === 'corretor' ? C.corretores : C.construtoras;
+      if(a === 'pronto'){ fecharMsel(el, true); return; }
+      if(a === 'limpar') sel.clear();
+      else el.querySelectorAll('.msel-pop .msel-op:not([hidden]) [data-msel-ck]').forEach(x => sel.add(x.dataset.mselCk));
+      C.limite = 80; desenhar(); return;
+    }
     const bb = e.target.closest('[data-balde]');
     if(bb){ const b = bb.dataset.balde; C.balde = b; C.faixa = null; C.limite = 80; C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector(`[data-balde="${b}"]`); if(f) f.focus(); return; }
     const md = e.target.closest('[data-modo]'); if(md){ C.modo = md.dataset.modo; C.limite = 80; C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector(`[data-modo="${C.modo}"]`); if(f) f.focus(); return; }
@@ -857,7 +957,7 @@ function ligar(el){
     const gr = e.target.closest('[data-grupo]');
     if(gr){ const k = gr.dataset.grupo; const ab = gr.getAttribute('aria-expanded') === 'true'; if(ab){ C.abertos.delete(k); C.fechados.add(k); } else { C.fechados.delete(k); C.abertos.add(k); } desenhar(); const f = el.querySelector(`[data-grupo="${CSS.escape(k)}"]`); if(f) f.focus(); return; }
     if(e.target.closest('[data-mais]')){ C.limite += 80; desenhar(); return; }
-    if(e.target.closest('[data-limpar]')){ Object.assign(C, {q: '', corretor: '', construtora: '', tipo: '', periodo: '', de: '', ate: '', faixa: null, limite: 80}); desenhar(); return; }
+    if(e.target.closest('[data-limpar]')){ limparFiltros(); desenhar(); return; }
     if(e.target.closest('[data-marcar]')){ C.marcar = true; C.sel.clear(); desenhar(); const f = el.querySelector('[data-sel-todas]'); if(f) f.focus(); return; }
     if(e.target.closest('[data-sel-cancelar]')){ C.marcar = false; C.sel.clear(); desenhar(); const f = el.querySelector('[data-marcar]'); if(f) f.focus(); return; }
     if(e.target.closest('[data-sel-ok]')){ confirmarLote(); return; }
@@ -868,29 +968,47 @@ function ligar(el){
     // o clique no rótulo da caixa chega de novo como clique na própria caixa: conta uma vez só
     if(lck && C.marcar && e.target.closest('label.rc-ck') && e.target.tagName !== 'INPUT') return;
     if(lck && C.marcar && !e.target.closest('[data-abrir]')){ alternar(lck.dataset.id + '|' + lck.dataset.idx); const foco = e.target.closest('input[data-ck]') ? lck.dataset.id + '|' + lck.dataset.idx : null; desenhar(); if(foco){ const li2 = [...el.querySelectorAll('li[data-ck]')].find(x => x.dataset.id + '|' + x.dataset.idx === foco); const i2 = li2 && li2.querySelector('input[data-ck]'); if(i2) i2.focus(); } return; }
-    const vc = e.target.closest('[data-verco]'); if(vc){ const li = vc.closest('[data-construtora]'); C.construtora = li.dataset.construtora; C.modo = 'lista'; desenhar(); return; }
+    const vc = e.target.closest('[data-verco]'); if(vc){ const li = vc.closest('[data-construtora]'); C.construtoras.clear(); C.construtoras.add(nz(li.dataset.construtora)); C.modo = 'lista'; desenhar(); return; }
     const li = e.target.closest('li[data-id]');
     const ac = e.target.closest('[data-acao]');
     if(ac && ac.dataset.acao === 'exportar'){ exportar(); return; }
     if(ac && li){ agir(ac.dataset.acao, li.dataset.id, Number(li.dataset.idx)); return; }
     if(li && !e.target.closest('a,select,input')){ C.aberto = {id: li.dataset.id, idx: Number(li.dataset.idx)}; desenhar(); return; }
-    const lc = e.target.closest('li[data-construtora]'); if(lc){ C.construtora = lc.dataset.construtora; C.modo = 'lista'; desenhar(); }
+    const lc = e.target.closest('li[data-construtora]'); if(lc){ C.construtoras.clear(); C.construtoras.add(nz(lc.dataset.construtora)); C.modo = 'lista'; desenhar(); }
   });
   let tm;
   el.addEventListener('input', e => {
+    if(e.target.matches && e.target.matches('[data-msel-q]')){
+      // busca dentro da lista aberta: só esconde as linhas, sem redesenhar
+      C.mselQ = e.target.value; const qn = nz(C.mselQ); const pop = e.target.closest('.msel-pop'); let n = 0;
+      pop.querySelectorAll('.msel-op').forEach(l => { const v = !qn || nz(l.dataset.nome).includes(qn); l.hidden = !v; if(v) n++; });
+      const vz = pop.querySelector('.msel-vazio'); if(vz) vz.hidden = n > 0;
+      return;
+    }
     const c = e.target.dataset.campo; if(!c) return;
     if(c === 'q'){ C.q = e.target.value; clearTimeout(tm); tm = setTimeout(() => { C.limite = 80; desenhar(); }, 180); return; }
   });
   el.addEventListener('change', e => {
+    const ck = e.target.dataset ? e.target.dataset.mselCk : null;
+    if(ck != null){ const sel = C.msel === 'corretor' ? C.corretores : C.construtoras; if(e.target.checked) sel.add(ck); else sel.delete(ck); C.limite = 80; desenhar(); return; }
     const c = e.target.dataset.campo; if(!c || c === 'q') return;
     C[c] = e.target.value; C.limite = 80; desenhar();
   });
+  el.addEventListener('keydown', e => {
+    if(!C.msel || !e.target.closest || !e.target.closest('.msel')) return;
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); fecharMsel(el, true); }
+    else if(e.key === 'Enter' && e.target.matches('[data-msel-q]')) e.preventDefault();
+  });
+  // clique ou foco fora da lista aberta fecha a lista (a seleção continua)
+  const fora = e => { if(C.msel && !(e.target.closest && e.target.closest(`.msel[data-msel="${C.msel}"]`))) fecharMsel(el, false); };
+  document.addEventListener('click', fora);
+  document.addEventListener('focusin', fora);
 }
 
 window.RadarCronograma = {
   desenhar(){ try{ desenhar(); }catch(e){ console.error(e); document.body.classList.remove('rc-ativo'); } },
   // abre a tela já numa situação (atalhos do painel inicial)
-  abrir(balde, extra){ Object.assign(C, {balde: balde || null, faixa: (extra && extra.faixa) || null, modo: (extra && extra.modo) || 'lista', limite: 80, q: '', corretor: '', construtora: '', tipo: '', periodo: (extra && extra.periodo) || '', de: '', ate: ''}); const b = document.querySelector('#nav [data-v="installments"]'); if(b) b.click(); else desenhar(); },
+  abrir(balde, extra){ limparFiltros(); Object.assign(C, {balde: balde || null, faixa: (extra && extra.faixa) || null, modo: (extra && extra.modo) || 'lista', periodo: (extra && extra.periodo) || ''}); const b = document.querySelector('#nav [data-v="installments"]'); if(b) b.click(); else desenhar(); },
   abrirVenda(id, idx){ C.aberto = {id, idx: idx || 0}; desenhar(); },
   estado: C
 };
