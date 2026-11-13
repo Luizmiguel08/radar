@@ -195,6 +195,34 @@ td.prog .sub{white-space:nowrap}
 .filters select,.filters input{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 10px}
 .chip{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-2);border-radius:99px;padding:5px 12px;font-weight:600;font-size:12.5px}
 .chip.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.msel{position:relative}
+.msel-btn{display:inline-flex;align-items:center;gap:8px;max-width:260px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 10px;font:inherit;cursor:pointer}
+.msel-btn span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msel-btn svg{flex:none;opacity:.7}
+.msel-btn.on{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
+.msel-btn:focus-visible,.msel-acoes button:focus-visible,.msel-op input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.msel-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:300px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;box-shadow:var(--shadow);padding:10px;display:flex;flex-direction:column;gap:8px}
+.msel-pop[hidden]{display:none}
+.msel-pop input[type=search]{width:100%;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 10px}
+.msel-acoes{display:flex;justify-content:space-between;gap:8px}
+.msel-acoes button{border:0;background:none;color:var(--blue);font-weight:700;font-size:12.5px;padding:6px 2px;min-height:32px;cursor:pointer}
+.msel-lista{max-height:280px;overflow:auto;display:flex;flex-direction:column;margin:0 -4px}
+.msel-op{display:flex;align-items:center;gap:9px;min-height:36px;padding:4px 6px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer}
+.msel-op[hidden]{display:none}
+.msel-op:hover{background:var(--surface-2)}
+.msel-op input{flex:none;width:16px;height:16px;margin:0;accent-color:var(--blue)}
+.msel-op .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msel-op .c{flex:none;color:var(--muted);font-size:12.5px}
+.msel-op.zero .n{color:var(--muted)}
+.msel-vazio{color:var(--muted);font-size:13px;padding:6px}
+.msel-fim{display:flex;justify-content:flex-end}
+.sales-sum{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;margin:-2px 0 12px;font-size:13px;color:var(--ink-2)}
+.sales-sum:empty{display:none}
+.sales-sum b{color:var(--ink);font-weight:700}
+.sales-sum > span:first-child b{font-size:15px}
+.sales-sum .por{flex-basis:100%;display:flex;flex-wrap:wrap;gap:2px 14px;font-size:12.5px;color:var(--muted)}
+.sales-sum .por b{color:var(--ink-2)}
+@media (max-width:820px){.msel-op{min-height:44px}.msel-acoes button{min-height:44px}.msel-pop{width:min(340px,calc(100vw - 32px));scroll-margin-bottom:84px}.msel-lista{max-height:min(280px,40vh)}}
 
 .rowbtns{display:flex;gap:6px;justify-content:flex-end}
 .iconbtn{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:8px;width:30px;height:30px;display:inline-grid;place-items:center}
@@ -390,13 +418,15 @@ body.broker .broker-bar{display:flex}
         <div class="card-head">
           <div><h2>Vendas cadastradas</h2><p>Cada venda gera automaticamente o cronograma de comissão</p></div>
           <div class="spacer"></div>
+          <div class="filters" style="margin:0" role="group" aria-label="Período das vendas"><button type="button" class="chip active" data-sp="tudo" aria-pressed="true">Todo o histórico</button><button type="button" class="chip" data-sp="periodo" id="spPeriodo" aria-pressed="false">Período selecionado</button></div>
         </div>
         <div class="filters">
           <input type="search" id="fSearch" placeholder="Buscar cliente…" aria-label="Buscar cliente">
           <select id="fBroker"><option value="">Todos os corretores</option></select>
-          <select id="fBuilder"><option value="">Todas as construtoras</option></select>
+          <div class="msel" id="fBuilderBox"><button type="button" class="msel-btn" id="fBuilder" aria-haspopup="true" aria-expanded="false" aria-controls="fBuilderPop"><span>Todas as construtoras</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="msel-pop" id="fBuilderPop" hidden></div></div>
           <select id="fStatus"><option value="">Todos os status</option><option value="andamento">Em andamento</option><option value="quitada">Comissão quitada</option><option value="atrasada">Com atraso</option><option value="semdata">Sem data</option><option value="parcela">Falta parcela</option><option value="distrato">Distratos</option></select>
         </div>
+        <div class="sales-sum" id="salesSum" aria-live="polite"></div>
         <div class="tscroll"><table id="tblSales"></table></div>
       </div>
     </section>
@@ -641,7 +671,7 @@ body.broker .broker-bar{display:flex}
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
-<script src="radar-app.js?v=9fd3ea6d22"></script>
+<script src="radar-app.js?v=e1a480c55e"></script>
 <script src="caixa.js?v=3ef95b65a4"></script>
 <script src="lucro.js?v=c0a1e2848a"></script>
 <script src="painel.js?v=06ad84b041"></script>
@@ -1387,15 +1417,34 @@ function renderAlerts(){
   document.querySelectorAll('[data-go]').forEach(b=>{ const go=()=>{ view=b.dataset.go; if(b.dataset.f){ if(view==='sales') document.getElementById('fStatus').value=b.dataset.f; else instFilter=b.dataset.f; } render(); window.scrollTo({top:0}); }; b.addEventListener('click',go); b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } }); });
 }
 
+// Vendas cadastradas: várias construtoras de uma vez, o período do topo (opcional) e a conta do que está na tela
+let fBuildSel = new Set(), salesScope = 'tudo', salesBuilders = [];
 function renderSales(){
-  const fb=document.getElementById('fBroker'), fc=document.getElementById('fBuilder');
-  const keepB=fb.value, keepC=fc.value;
+  const fb=document.getElementById('fBroker'), fcb=document.getElementById('fBuilder');
+  const keepB=fb.value;
   fb.innerHTML='<option value="">Todos os corretores</option>'+cfg.corretores.map(c=>`<option>${esc(c.nome)}</option>`).join(''); fb.value=keepB;
-  const builders=[...new Set([...cfg.construtoras.map(c=>c.nome), ...sales.map(s=>s.construtora)])];
-  fc.innerHTML='<option value="">Todas as construtoras</option>'+builders.map(c=>`<option>${esc(c)}</option>`).join(''); fc.value=keepC;
+  const builders=[...new Set([...cfg.construtoras.map(c=>c.nome), ...sales.map(s=>s.construtora)])].filter(Boolean);
   const q=document.getElementById('fSearch').value.toLowerCase(); const fs=document.getElementById('fStatus').value;
+  document.querySelectorAll('[data-sp]').forEach(c=>{ const on=c.dataset.sp===salesScope; c.classList.toggle('active',on); c.setAttribute('aria-pressed',String(on)); });
+  const spp=document.getElementById('spPeriodo'); if(spp) spp.textContent=periodLabel();
   let rows = sales.map(s=>({s,sc:schedule(s)}));
-  rows = rows.filter(({s,sc})=> (!q||s.cliente.toLowerCase().includes(q)) && (!fb.value||s.corretor===fb.value) && (!fc.value||s.construtora===fc.value) && (!fs || (fs==='quitada'?sc.quitada: fs==='atrasada'? sc.atrasados>0 : fs==='semdata'? (!s.dataEntrada&&isActive(s)) : fs==='parcela'? sc.semParcela : fs==='distrato'? !isActive(s) : (!sc.quitada&&isActive(s)))));
+  // primeiro tudo menos a construtora: dá a conta de cada uma na lista do filtro
+  rows = rows.filter(({s,sc})=> (!q||s.cliente.toLowerCase().includes(q)) && (!fb.value||s.corretor===fb.value) && (salesScope!=='periodo'||inPeriod(s.dataVenda||s.dataEntrada||'')) && (!fs || (fs==='quitada'?sc.quitada: fs==='atrasada'? sc.atrasados>0 : fs==='semdata'? (!s.dataEntrada&&isActive(s)) : fs==='parcela'? sc.semParcela : fs==='distrato'? !isActive(s) : (!sc.quitada&&isActive(s)))));
+  const porC=new Map(); rows.forEach(({s})=>{ if(fs==='distrato'||isActive(s)) porC.set(s.construtora,(porC.get(s.construtora)||0)+1); });
+  salesBuilders=builders.sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'})).map(nome=>({nome,n:porC.get(nome)||0}));
+  const nSel=fBuildSel.size;
+  fcb.firstElementChild.textContent = !nSel ? 'Todas as construtoras' : nSel===1 ? [...fBuildSel][0] : `${nSel} construtoras`;
+  fcb.classList.toggle('on', nSel>0); fcb.title = nSel>1 ? [...fBuildSel].join(', ') : '';
+  if(nSel) rows = rows.filter(({s})=>fBuildSel.has(s.construtora));
+  { // a conta do que está na tela; distratos à parte, como no resumo da Visão geral
+    const pl=(n,a,b)=>`${n} ${n===1?a:b}`;
+    const at=rows.filter(r=>isActive(r.s)), di=rows.length-at.length;
+    const un=at.reduce((a,r)=>a+nUnits(r.s),0), vgv=at.reduce((a,r)=>a+(Number(r.s.valorImovel)||0),0), com=at.reduce((a,r)=>a+(Number(r.sc.total)||0),0);
+    let h = at.length ? `<span><b class="tn">${pl(at.length,'venda','vendas')}</b>${un!==at.length?` (${pl(un,'unidade','unidades')})`:''}</span><span>VGV <b class="tn">${fmt(vgv)}</b></span><span>Comissão <b class="tn">${fmt(com)}</b></span>` : '';
+    if(di) h += `<span>${pl(di,'distrato','distratos')}${at.length?' fora da conta':''}</span>`;
+    if(nSel>1 && at.length){ const por=new Map(); at.forEach(r=>por.set(r.s.construtora,(por.get(r.s.construtora)||0)+1)); h += `<span class="por">${[...por].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'pt-BR')).map(([n,k])=>`<span>${esc(n)} <b class="tn">${k}</b></span>`).join('')}</span>`; }
+    document.getElementById('salesSum').innerHTML = h;
+  }
   rows.sort((a,b)=>((b.s.dataVenda||b.s.dataEntrada)||'').localeCompare((a.s.dataVenda||a.s.dataEntrada)||''));
   const t=document.getElementById('tblSales');
   if(!rows.length){ t.innerHTML='<tr><td><div class="empty">Nenhuma venda encontrada.</div></td></tr>'; return; }
@@ -2131,7 +2180,37 @@ const acoesRecebimentos = {
   }
 };
 window.RadarTelas={abrirVenda:(e,o)=>openForm(e||null,o||{}),vendas:()=>sales,config:()=>cfg,hoje:()=>today,periodo:()=>({ano:selYear,mes:selMonth}),motor:{schedule,isActive,nUnits,isCeo,pctCorretor},fmt,acoes:acoesRecebimentos,instFiltro:()=>instFilter};
-['fSearch','fBroker','fBuilder','fStatus'].forEach(id=>document.getElementById(id).addEventListener('input',renderSales));
+['fSearch','fBroker','fStatus'].forEach(id=>document.getElementById(id).addEventListener('input',renderSales));
+document.querySelectorAll('[data-sp]').forEach(c=>c.addEventListener('click',()=>{ salesScope=c.dataset.sp; renderSales(); }));
+// filtro de construtoras das Vendas cadastradas: várias de uma vez, com busca e a conta de cada uma
+(function(){
+  const box=document.getElementById('fBuilderBox'), btn=document.getElementById('fBuilder'), pop=document.getElementById('fBuilderPop');
+  const nz=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const fechar=foco=>{ if(pop.hidden) return; pop.hidden=true; btn.setAttribute('aria-expanded','false'); if(foco) btn.focus(); };
+  const filtrar=()=>{ const q=nz(pop.querySelector('#fBuilderQ').value.trim()); let n=0; pop.querySelectorAll('.msel-op').forEach(l=>{ const v=!q||nz(l.dataset.nome).includes(q); l.hidden=!v; if(v) n++; }); pop.querySelector('.msel-vazio').hidden=n>0; };
+  const abrir=()=>{
+    pop.innerHTML=`<input type="search" id="fBuilderQ" placeholder="Procurar construtora…" aria-label="Procurar construtora" autocomplete="off">`
+      +`<div class="msel-acoes"><button type="button" data-ms="marcar">Marcar as da lista</button><button type="button" data-ms="limpar">Limpar</button></div>`
+      +`<div class="msel-lista" role="group" aria-label="Construtoras">${salesBuilders.map(b=>`<label class="msel-op${b.n?'':' zero'}" data-nome="${esc(b.nome)}"><input type="checkbox" value="${esc(b.nome)}"${fBuildSel.has(b.nome)?' checked':''}><span class="n">${esc(b.nome)}</span><span class="c tn" aria-label="${b.n} venda${b.n===1?'':'s'}">${b.n}</span></label>`).join('')}<div class="msel-vazio" hidden>Nenhuma construtora com esse nome.</div></div>`
+      +`<div class="msel-fim"><button type="button" class="btn sm primary" data-ms="pronto">Pronto</button></div>`;
+    pop.hidden=false; btn.setAttribute('aria-expanded','true');
+    pop.style.left='0px'; const r=pop.getBoundingClientRect(), lim=document.documentElement.clientWidth-16; if(r.right>lim) pop.style.left=Math.round(lim-r.right)+'px';
+    // no celular o foco vai para a lista (sem abrir o teclado); no computador, para a busca
+    if(window.matchMedia&&matchMedia('(pointer: coarse)').matches){ pop.tabIndex=-1; pop.focus({preventScroll:true}); } else pop.querySelector('#fBuilderQ').focus({preventScroll:true});
+    pop.scrollIntoView({block:'nearest'});
+  };
+  btn.addEventListener('click',()=>{ if(pop.hidden) abrir(); else fechar(true); });
+  pop.addEventListener('input',e=>{ if(e.target.id==='fBuilderQ') filtrar(); });
+  pop.addEventListener('change',e=>{ const x=e.target; if(x.type!=='checkbox') return; if(x.checked) fBuildSel.add(x.value); else fBuildSel.delete(x.value); renderSales(); });
+  pop.addEventListener('click',e=>{ const a=e.target.closest('[data-ms]'); if(!a) return;
+    if(a.dataset.ms==='pronto'){ fechar(true); return; }
+    if(a.dataset.ms==='limpar'){ fBuildSel.clear(); pop.querySelectorAll('.msel-op input').forEach(x=>{ x.checked=false; }); }
+    else pop.querySelectorAll('.msel-op:not([hidden]) input').forEach(x=>{ x.checked=true; fBuildSel.add(x.value); });
+    renderSales(); });
+  pop.addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); fechar(true); } else if(e.key==='Enter'&&e.target.id==='fBuilderQ') e.preventDefault(); });
+  document.addEventListener('click',e=>{ if(!pop.hidden&&!box.contains(e.target)) fechar(false); });
+  document.addEventListener('focusin',e=>{ if(!pop.hidden&&!box.contains(e.target)) fechar(false); });
+})();
 document.querySelectorAll('#instChips .chip').forEach(c=>c.addEventListener('click',()=>{ instFilter=c.dataset.f; renderInstallments(); }));
 ['iSearch','iBroker','iBuilder','iType','iFrom','iTo'].forEach(id=>document.getElementById(id).addEventListener('input',renderInstallments));
 document.getElementById('iQuick').addEventListener('change',e=>{

@@ -1,6 +1,6 @@
 // Radar de Comissões · service worker (app sem internet + avisos no celular)
-const V = 'radar-202611111935';
-const SHELL = ["./", "./index.html", "./radar-app.js?v=9fd3ea6d22", "./caixa.js?v=3ef95b65a4", "./lucro.js?v=c0a1e2848a", "./painel.js?v=06ad84b041", "./cronograma.js?v=ebaf191a13", "./manifest.webmanifest", "./logo.png", "./icon-192.png", "./icon-512.png", "./badge-96.png", "./favicon-64.png", "./apple-touch-icon.png", "./vendor/chart.umd.js", "./vendor/jspdf.umd.min.js", "./vendor/jspdf.plugin.autotable.min.js", "./vendor/xlsx.full.min.js"];
+const V = 'radar-202611122200';
+const SHELL = ["./", "./index.html", "./radar-app.js?v=e1a480c55e", "./caixa.js?v=3ef95b65a4", "./lucro.js?v=c0a1e2848a", "./painel.js?v=06ad84b041", "./cronograma.js?v=ebaf191a13", "./manifest.webmanifest", "./logo.png", "./icon-192.png", "./icon-512.png", "./badge-96.png", "./favicon-64.png", "./apple-touch-icon.png", "./vendor/chart.umd.js", "./vendor/jspdf.umd.min.js", "./vendor/jspdf.plugin.autotable.min.js", "./vendor/xlsx.full.min.js"];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
